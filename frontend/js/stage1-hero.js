@@ -5,9 +5,11 @@
 import { API_BASE, flagImg, flagUrl, t } from './config.js';
 import { buildNav, buildTicker, attachNavListeners } from './nav.js';
 
-let heroData       = null;
-let pinnedMatch    = null;
-let searchDebounce = null;
+let heroData         = null;
+let pinnedMatch      = null;
+let searchDebounce   = null;
+let calendarData     = null;   // full tournament match list
+let calendarOpen     = false;
 
 const MAX_CARDS = 4; // max visible cards before fade/scroll
 
@@ -28,6 +30,51 @@ export function renderHero(container, state, onNavigate) {
           </svg>
           <input type="text" id="search-input" placeholder="${t('search_placeholder')}" autocomplete="off" aria-label="Search matches">
           <div class="search-results hidden" id="search-results" role="listbox"></div>
+        </div>
+        <button class="cal-icon-btn" id="cal-icon-btn" aria-label="Open match calendar" title="Match Calendar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+        </button>
+      </div>
+      <!-- Calendar overlay -->
+      <div class="cal-overlay hidden" id="cal-overlay" role="dialog" aria-modal="true" aria-label="Match Calendar">
+        <div class="cal-backdrop" id="cal-backdrop"></div>
+        <div class="cal-panels">
+          <!-- Left: Calendar -->
+          <div class="cal-panel cal-panel-left" id="cal-panel-left">
+            <div class="cal-panel-head">
+              <button class="cal-nav-btn" id="cal-prev" aria-label="Previous month">&#8249;</button>
+              <span class="cal-month-label" id="cal-month-label"></span>
+              <button class="cal-nav-btn" id="cal-next" aria-label="Next month">&#8250;</button>
+            </div>
+            <div class="cal-grid-head">
+              <span>Su</span><span>Mo</span><span>Tu</span><span>We</span>
+              <span>Th</span><span>Fr</span><span>Sa</span>
+            </div>
+            <div class="cal-grid" id="cal-grid"></div>
+          </div>
+          <!-- Right: Search + results -->
+          <div class="cal-panel cal-panel-right" id="cal-panel-right">
+            <div class="cal-search-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" id="cal-search-input" placeholder="Search team…" autocomplete="off" aria-label="Search team in calendar">
+            </div>
+            <div class="cal-right-content" id="cal-right-content">
+              <div class="cal-right-placeholder">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>
+                </svg>
+                <span>Click a date to see matches</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -75,6 +122,7 @@ export function renderHero(container, state, onNavigate) {
   attachScrollFade(container, '#finished-list',  '#finished-fade');
   attachScrollFade(container, '#upcoming-list',  '#upcoming-fade');
   attachSearch(container, onNavigate);
+  attachCalendar(container, onNavigate);
   loadHero(container, state, onNavigate);
 }
 
@@ -423,6 +471,7 @@ async function doSearch(q, resultsEl, container, onNavigate) {
           </div>
           <div class="sri-status">
             <span class="s-bucket ${bucketCls}">${bucketLabel}</span>
+            ${m.stage ? `<span class="s-stage-label">${m.stage}</span>` : ''}
           </div>
         </div>
       `;
@@ -523,7 +572,378 @@ function attachScrollFade(container, scrollSel, wrapSel) {
   setTimeout(check, 100);
 }
 
-// ── Skeletons / empty states ──────────────────────────────────
+// ── Calendar ──────────────────────────────────────────────────
+
+function attachCalendar(container, onNavigate) {
+  const btn      = container.querySelector('#cal-icon-btn');
+  const overlay  = container.querySelector('#cal-overlay');
+  const backdrop = container.querySelector('#cal-backdrop');
+  if (!btn || !overlay) return;
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    openCalendar(container, onNavigate);
+  });
+
+  backdrop.addEventListener('click', () => closeCalendar(container));
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && calendarOpen) closeCalendar(container);
+  });
+}
+
+function openCalendar(container, onNavigate) {
+  calendarOpen = true;
+  const overlay = container.querySelector('#cal-overlay');
+  overlay.classList.remove('hidden');
+  // trigger transition
+  requestAnimationFrame(() => overlay.classList.add('cal-visible'));
+
+  // Init calendar state
+  container._calState = {
+    year:          new Date().getFullYear(),
+    month:         new Date().getMonth(),
+    selectedDate:  null,
+    searchQuery:   '',
+    onNavigate,
+  };
+
+  // Fetch calendar data then render
+  fetchCalendarData(container);
+  wireCalendarControls(container, onNavigate);
+}
+
+function closeCalendar(container) {
+  calendarOpen = false;
+  const overlay = container.querySelector('#cal-overlay');
+  overlay.classList.remove('cal-visible');
+  setTimeout(() => overlay.classList.add('hidden'), 250);
+
+  // Clear cal search
+  const ci = container.querySelector('#cal-search-input');
+  if (ci) ci.value = '';
+}
+
+async function fetchCalendarData(container) {
+  if (calendarData) {
+    renderCalendarGrid(container);
+    return;
+  }
+  try {
+    const res  = await fetch(`${API_BASE}/calendar`);
+    const data = await res.json();
+    calendarData = data.matches || [];
+  } catch {
+    // Fallback: build from heroData if calendar endpoint not yet deployed
+    calendarData = [
+      ...((heroData?.yesterday)    || []),
+      ...((heroData?.two_days_ago) || []),
+      ...((heroData?.today)        || []),
+      ...((heroData?.upcoming)     || []),
+    ];
+  }
+  renderCalendarGrid(container);
+}
+
+function renderCalendarGrid(container) {
+  const s          = container._calState;
+  const labelEl    = container.querySelector('#cal-month-label');
+  const gridEl     = container.querySelector('#cal-grid');
+  if (!labelEl || !gridEl || !s) return;
+  const onNavigate = s.onNavigate;
+
+  const monthNames = ['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
+  labelEl.textContent = `${monthNames[s.month]} ${s.year}`;
+
+  const firstDay = new Date(s.year, s.month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(s.year, s.month + 1, 0).getDate();
+
+  // Group calendar data by date string
+  const matchesByDate = {};
+  (calendarData || []).forEach(m => {
+    if (!m.date) return;
+    if (!m.home || m.home === 'null' || !m.away || m.away === 'null') return;
+    (matchesByDate[m.date] = matchesByDate[m.date] || []).push(m);
+  });
+
+  // Highlighted dates from search
+  const q = (s.searchQuery || '').toLowerCase().trim();
+  const highlightedDates = new Set();
+  if (q) {
+    (calendarData || []).forEach(m => {
+      if (!m.date) return;
+      if ((m.home || '').toLowerCase().includes(q) || (m.away || '').toLowerCase().includes(q)) {
+        highlightedDates.add(m.date);
+      }
+    });
+  }
+
+  let html = '';
+
+  // Leading empty cells
+  for (let i = 0; i < firstDay; i++) html += `<div class="cal-cell cal-cell-empty"></div>`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr  = `${s.year}-${String(s.month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayMatches = matchesByDate[dateStr] || [];
+    const hasMatches = dayMatches.length > 0;
+    const isSelected = !s.searchQuery && s.selectedDate === dateStr;
+    const isToday    = dateStr === new Date().toISOString().slice(0,10);
+    const isHL       = q && highlightedDates.has(dateStr);
+    const isHLOnly   = isHL && !isSelected; // highlighted by search but not clicked
+
+    let cls = 'cal-cell';
+    if (!hasMatches)  cls += ' cal-cell-empty-day';
+    if (hasMatches)   cls += ' cal-cell-has-matches';
+    if (isSelected)   cls += ' cal-cell-selected';
+    if (isToday)      cls += ' cal-cell-today';
+    if (isHLOnly)     cls += ' cal-cell-hl';
+
+    // Dot indicators: one per match, capped at 4
+    const dots = hasMatches
+      ? `<div class="cal-dots">${dayMatches.slice(0,4).map(m => {
+          const finished = m.score_home != null;
+          return `<span class="cal-dot${finished ? ' cal-dot-done' : ' cal-dot-upcoming'}${isHLOnly ? ' cal-dot-hl' : ''}"></span>`;
+        }).join('')}${dayMatches.length > 4 ? `<span class="cal-dot-more">+${dayMatches.length-4}</span>` : ''}</div>`
+      : '';
+
+    html += `<div class="${cls}" data-date="${dateStr}" data-has="${hasMatches ? '1' : '0'}" role="button" tabindex="${hasMatches ? 0 : -1}">
+      <span class="cal-day-num">${d}</span>
+      ${dots}
+    </div>`;
+  }
+
+  gridEl.innerHTML = html;
+
+  // Click handlers on date cells
+  gridEl.querySelectorAll('.cal-cell-has-matches').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const date = cell.dataset.date;
+      s.selectedDate = date;
+      s.searchQuery  = '';
+      const ci = container.querySelector('#cal-search-input');
+      if (ci) ci.value = '';
+      renderCalendarGrid(container);
+      renderCalendarDateMatches(container, matchesByDate[date] || [], onNavigate);
+    });
+    cell.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') cell.click();
+    });
+  });
+}
+
+function renderCalendarDateMatches(container, matches, onNavigate) {
+  const el     = container.querySelector('#cal-right-content');
+  const panel  = container.querySelector('#cal-panel-right');
+  if (!el) return;
+
+  if (!matches.length) {
+    el.innerHTML = `<div class="cal-right-placeholder"><span>No matches on this date</span></div>`;
+    return;
+  }
+
+  el.innerHTML = matches.map(m => {
+    const hasScore = m.score_home != null;
+    const scoreStr = hasScore ? `${m.score_home}–${m.score_away}` : 'vs';
+    const hf = flagUrl(m.home, 24);
+    const af = flagUrl(m.away, 24);
+
+    const hFlagHtml = hf
+      ? `<img src="${hf}" alt="${m.home}" class="cal-m-flag" onerror="this.style.display='none'">`
+      : `<div class="cal-m-flag flag-placeholder"></div>`;
+    const aFlagHtml = af
+      ? `<img src="${af}" alt="${m.away}" class="cal-m-flag" onerror="this.style.display='none'">`
+      : `<div class="cal-m-flag flag-placeholder"></div>`;
+
+    return `
+      <div class="cal-match-row${hasScore ? ' cal-match-clickable' : ' cal-match-upcoming'}" data-id="${m.id}">
+        <div class="cal-match-stage">${m.stage || ''}</div>
+        <div class="cal-match-teams">
+          ${hFlagHtml}
+          <span class="cal-m-name">${m.home}</span>
+          <span class="cal-m-score${hasScore ? ' cal-m-score-done' : ''}">${scoreStr}</span>
+          <span class="cal-m-name cal-m-name-away">${m.away}</span>
+          ${aFlagHtml}
+        </div>
+        ${hasScore
+          ? `<div class="cal-match-status cal-status-done">FINISHED</div>`
+          : `<div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>`}
+      </div>
+    `;
+  }).join('');
+
+  // Click to go to insight
+  el.querySelectorAll('.cal-match-clickable').forEach(row => {
+    const m = matches.find(x => String(x.id) === row.dataset.id);
+    if (!m) return;
+    row.addEventListener('click', () => {
+      closeCalendar(container);
+      window._roosterState = window._roosterState || {};
+      window._roosterState.pinnedMatch = m;
+      onNavigate('insight');
+    });
+  });
+
+  // Scroll-fade
+  if (panel) {
+    const checkFade = () => {
+      const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+      panel.classList.toggle('at-end', atEnd);
+    };
+    el.removeEventListener('scroll', el._calFadeHandler);
+    el._calFadeHandler = checkFade;
+    el.addEventListener('scroll', checkFade, { passive: true });
+    setTimeout(checkFade, 50);
+  }
+}
+
+function renderCalendarSearchResults(container, onNavigate) {
+  const s     = container._calState;
+  const el    = container.querySelector('#cal-right-content');
+  const panel = container.querySelector('#cal-panel-right');
+  if (!el || !s) return;
+
+  const q = (s.searchQuery || '').toLowerCase().trim();
+  if (!q) {
+    // If a date was selected before searching, restore it
+    if (s.selectedDate) {
+      const matchesByDate = {};
+      (calendarData || []).forEach(m => {
+        if (!m.date) return;
+        if (!m.home || m.home === 'null' || !m.away || m.away === 'null') return;
+        (matchesByDate[m.date] = matchesByDate[m.date] || []).push(m);
+      });
+      renderCalendarDateMatches(container, matchesByDate[s.selectedDate] || [], onNavigate);
+    } else {
+      el.innerHTML = `<div class="cal-right-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/>
+          <line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>
+        </svg>
+        <span>Click a date to see matches</span>
+      </div>`;
+    }
+    return;
+  }
+
+  const results = (calendarData || []).filter(m =>
+    m.home && m.home !== 'null' && m.away && m.away !== 'null' &&
+    ((m.home || '').toLowerCase().includes(q) ||
+    (m.away || '').toLowerCase().includes(q))
+  );
+
+  if (!results.length) {
+    el.innerHTML = `<div class="cal-right-placeholder"><span>No matches found for "${s.searchQuery}"</span></div>`;
+    return;
+  }
+
+  el.innerHTML = results.map(m => {
+    const hasScore = m.score_home != null;
+    const scoreStr = hasScore ? `${m.score_home}–${m.score_away}` : 'vs';
+    const hf = flagUrl(m.home, 24);
+    const af = flagUrl(m.away, 24);
+    const hFlagHtml = hf ? `<img src="${hf}" alt="${m.home}" class="cal-m-flag" onerror="this.style.display='none'">` : `<div class="cal-m-flag flag-placeholder"></div>`;
+    const aFlagHtml = af ? `<img src="${af}" alt="${m.away}" class="cal-m-flag" onerror="this.style.display='none'">` : `<div class="cal-m-flag flag-placeholder"></div>`;
+
+    return `
+      <div class="cal-match-row${hasScore ? ' cal-match-clickable' : ' cal-match-upcoming'}" data-id="${m.id}">
+        <div class="cal-match-stage">${m.stage || ''} · ${m.date || ''}</div>
+        <div class="cal-match-teams">
+          ${hFlagHtml}
+          <span class="cal-m-name">${m.home}</span>
+          <span class="cal-m-score${hasScore ? ' cal-m-score-done' : ''}">${scoreStr}</span>
+          <span class="cal-m-name cal-m-name-away">${m.away}</span>
+          ${aFlagHtml}
+        </div>
+        ${hasScore
+          ? `<div class="cal-match-status cal-status-done">FINISHED</div>`
+          : `<div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>`}
+      </div>
+    `;
+  }).join('');
+
+  el.querySelectorAll('.cal-match-clickable').forEach(row => {
+    const m = results.find(x => String(x.id) === row.dataset.id);
+    if (!m) return;
+    row.addEventListener('click', () => {
+      closeCalendar(container);
+      window._roosterState = window._roosterState || {};
+      window._roosterState.pinnedMatch = m;
+      onNavigate('insight');
+    });
+  });
+
+  // Scroll-fade
+  if (panel) {
+    const checkFade = () => {
+      const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+      panel.classList.toggle('at-end', atEnd);
+    };
+    el.removeEventListener('scroll', el._calFadeHandler);
+    el._calFadeHandler = checkFade;
+    el.addEventListener('scroll', checkFade, { passive: true });
+    setTimeout(checkFade, 50);
+  }
+}
+
+function wireCalendarControls(container, onNavigate) {
+  const prevBtn = container.querySelector('#cal-prev');
+  const nextBtn = container.querySelector('#cal-next');
+  const calSearchInput = container.querySelector('#cal-search-input');
+
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => {
+      const s = container._calState;
+      if (!s) return;
+      s.month--;
+      if (s.month < 0) { s.month = 11; s.year--; }
+      s.selectedDate = null;
+      renderCalendarGrid(container);
+      resetCalRight(container);
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      const s = container._calState;
+      if (!s) return;
+      s.month++;
+      if (s.month > 11) { s.month = 0; s.year++; }
+      s.selectedDate = null;
+      renderCalendarGrid(container);
+      resetCalRight(container);
+    });
+  }
+
+  let calSearchDebounce = null;
+  if (calSearchInput) {
+    calSearchInput.addEventListener('input', () => {
+      const s = container._calState;
+      if (!s) return;
+      s.searchQuery = calSearchInput.value;
+      clearTimeout(calSearchDebounce);
+      calSearchDebounce = setTimeout(() => {
+        renderCalendarGrid(container);
+        renderCalendarSearchResults(container, onNavigate);
+      }, 200);
+    });
+  }
+}
+
+function resetCalRight(container) {
+  const el = container.querySelector('#cal-right-content');
+  if (!el) return;
+  el.innerHTML = `<div class="cal-right-placeholder">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28">
+      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/>
+      <line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>
+    </svg>
+    <span>Click a date to see matches</span>
+  </div>`;
+}
+
+
 function skeletons(n) {
   return Array(n).fill('<div class="skeleton"></div>').join('');
 }

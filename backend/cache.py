@@ -13,6 +13,7 @@ TTL = {
     "wiki":         10800,
     "analysis":     21600,   # 6hrs — analysis of a finished match won't change
     "names":        21600,   # 6hrs — same text = same names
+    "calendar":     86400,
 }
 
 def _ttl_for(key: str) -> int:

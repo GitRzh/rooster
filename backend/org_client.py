@@ -338,3 +338,13 @@ def get_coaches(home: str, away: str) -> dict:
         "home_coach": coaches.get(home, ""),
         "away_coach": coaches.get(away, ""),
     }
+
+
+def get_calendar() -> list:
+    cached = cache.get("calendar")
+    if cached is not None:
+        return cached
+    data = _get(f"/competitions/{WC_CODE}/matches")
+    matches = [_fmt_match(m) for m in data.get("matches", [])]
+    cache.set("calendar", matches)
+    return matches

@@ -21,6 +21,7 @@ from analyzer import analyze
 from groq_client import extract_names, extract_entity_info
 import asyncio
 import cache
+from org_client import get_live, get_today, get_upcoming, get_yesterday, get_two_days_ago, get_calendar
 
 app = FastAPI(title="ROOSTER API")
 
@@ -217,6 +218,15 @@ def cache_clear(bucket: str | None = None):
             return {"cleared": keys}
         cache._cache.clear()
     return {"cleared": "all"}
+
+
+@app.get("/calendar")
+def calendar():
+    try:
+        return {"matches": get_calendar()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/health")
 def health():
