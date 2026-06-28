@@ -57,8 +57,9 @@ if (lang) {
 // Listen for lang changes
 document.addEventListener('rooster:lang-change', e => {
   setCurrentLang(e.detail);
-  // Re-render current stage (simplest approach)
-  navigate(currentStage());
+  const stage = currentStage();
+  // Redirect to home if on result or insight — content is lang-specific
+  navigate(stage === 'result' || stage === 'insight' ? 'hero' : stage);
 });
 
 function currentStage() {

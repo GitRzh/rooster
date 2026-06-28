@@ -167,21 +167,15 @@ function buildQTab(match, type, winner, loser, isDraw) {
             <div class="qa-info-title">${t('tooltip_title')}</div>
             <div class="qa-info-section">
               <div class="qa-info-label">${t('tooltip_ask_about_label')}</div>
-              <div class="qa-info-examples">
-                ${t('tooltip_ask_about_body')}
-              </div>
+              ${toBullets(t('tooltip_ask_about_body'))}
             </div>
             <div class="qa-info-section">
               <div class="qa-info-label">${t('tooltip_wont_work_label')}</div>
-              <div class="qa-info-examples qa-info-wont">
-                ${t('tooltip_wont_work_body')}
-              </div>
+              ${toBullets(t('tooltip_wont_work_body'), 'qa-info-wont')}
             </div>
             <div class="qa-info-section">
               <div class="qa-info-label">${t('tooltip_examples_label')}</div>
-              <div class="qa-info-examples">
-                ${t('tooltip_examples_body')}
-              </div>
+              ${toBullets(t('tooltip_examples_body'))}
             </div>
           </div>
         </div>
@@ -222,6 +216,12 @@ function buildQTab(match, type, winner, loser, isDraw) {
         : `<span class="q-tab-arrow" aria-hidden="true">→</span>`}
     </div>
   `;
+}
+
+// Convert dot-separated or <br>-separated string into <ul><li> list
+function toBullets(str, cls = '') {
+  const items = str.split(/\s*·\s*|<br\s*\/?>/).map(s => s.trim()).filter(Boolean);
+  return `<ul class="qa-info-examples${cls ? ' ' + cls : ''}">${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
 }
 
 function attachQTabs(container, match, state, onNavigate, isDraw) {

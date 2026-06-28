@@ -459,16 +459,24 @@ function positionColor(pos) {
   return 'var(--muted)';
 }
 
+// ── Sanitize LLM string fields — treat placeholder strings as missing ─
+function clean(val) {
+  if (!val) return null;
+  const s = String(val).trim();
+  if (/^(empty|unknown|n\/a|none|null|undefined|-)$/i.test(s)) return null;
+  return s || null;
+}
+
 // ── Player card ───────────────────────────────────────────────
 function buildPlayerCard(name, wikiData, extract, initials, info = null) {
   const url      = wikiData.url;
   // Prefer LLM-extracted info; fall back to regex for each field individually
-  const nat      = info?.nationality  || parseNationality(extract);
-  const pos      = info?.position     || parsePosition(extract);
-  const club     = info?.club         || parseClub(extract);
+  const nat      = clean(info?.nationality) || parseNationality(extract);
+  const pos      = clean(info?.position)    || parsePosition(extract);
+  const club     = clean(info?.club)        || parseClub(extract);
   const posColor = positionColor(pos);
-  const born     = info?.born         || parseBorn(extract);
-  const age      = info?.age          || (born ? computeAge(born) : null);
+  const born     = clean(info?.born)        || parseBorn(extract);
+  const age      = clean(info?.age)         || (born ? computeAge(born) : null);
   const wcGoals  = parseWCGoals(extract);
   const awards   = (info?.awards?.length ? info.awards : null) || parseAwards(extract);
 
@@ -520,10 +528,10 @@ function buildPlayerCard(name, wikiData, extract, initials, info = null) {
 // ── Manager card ──────────────────────────────────────────────
 function buildManagerCard(name, wikiData, extract, initials, info = null) {
   const url         = wikiData.url;
-  const nat         = info?.nationality        || parseNationality(extract);
+  const nat         = clean(info?.nationality)       || parseNationality(extract);
   // For managers, LLM returns currently_manages (team they manage now)
   // club field on managers = team they manage, not a playing club
-  const curRole     = info?.currently_manages  || info?.club || parseCurrentRole(extract);
+  const curRole     = clean(info?.currently_manages) || clean(info?.club) || parseCurrentRole(extract);
   const prevManaged = parsePreviouslyManaged(extract);
   const yearsActive = parseYearsActive(extract);
   const trophies    = (info?.awards?.length ? info.awards : null) || parseHonours(extract);

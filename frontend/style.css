@@ -91,8 +91,9 @@ body {
 
 .logo-img {
   height: 40px;
-  width: auto;
+  width: 178px;
   object-fit: contain;
+  object-position: left center;
   filter: drop-shadow(0 0 10px rgba(245,230,66,0.25));
 }
 
@@ -1045,9 +1046,12 @@ body {
   outline: none;
   line-height: 1.5;
   transition: border-color 0.15s, background 0.15s;
-  min-height: 38px;
+  min-height: 58px;
   max-height: 140px;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
+.q-inline-input::-webkit-scrollbar { display: none; }
 
 .q-inline-input::placeholder { color: var(--muted); }
 .q-inline-input:focus { border-color: var(--yellow); background: rgba(255,255,255,0.10); }
@@ -2221,7 +2225,7 @@ body {
   .result-left   { border-right: none; }
 
   .r-nav { padding: 0 14px; }
-  .r-nav .logo-img { height: 34px; }
+  .r-nav .logo-img { height: 34px; width: 152px; }
   .nav-link { padding: 5px 10px; font-size: 9px; }
 }
 
@@ -2390,7 +2394,11 @@ body {
   font-size: 11px;
   color: rgba(255,255,255,0.75);
   line-height: 1.6;
+  list-style: disc;
+  padding-left: 14px;
+  margin: 0;
 }
+.qa-info-examples li { margin-bottom: 2px; }
 
 .qa-info-examples.qa-info-wont {
   color: rgba(239,68,68,0.8);

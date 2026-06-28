@@ -10,11 +10,23 @@ const NAV_ITEMS = [
   { id: 'tech',     labelKey: 'nav_tech',     stage: 'tech' },
 ];
 
+const LOGO_MAP = {
+  ar: './assets/rooster-logo-ar.png',
+  ja: './assets/rooster-logo-ja.png',
+  ko: './assets/rooster-logo-ko.png',
+  zh: './assets/rooster-logo-zh.png',
+};
+const DEFAULT_LOGO = './assets/rooster-logo-en-es-fr-pt-de-tr.png';
+
+function getLogoSrc() {
+  return LOGO_MAP[getCurrentLang()] ?? DEFAULT_LOGO;
+}
+
 export function buildNav(activeStage, onNavigate) {
   return `
     <nav class="r-nav">
       <a class="logo-wrap" href="#" data-nav="hero" aria-label="ROOSTER Home">
-        <img src="./assets/rooster-logo.png" alt="ROOSTER" class="logo-img">
+        <img src="${getLogoSrc()}" alt="ROOSTER" class="logo-img" id="rooster-logo">
       </a>
       <div class="nav-links">
         ${NAV_ITEMS.map(n =>
@@ -93,6 +105,9 @@ export function attachNavListeners(container, onNavigate) {
         item.classList.add('active');
         if (langLabel) langLabel.textContent = item.dataset.label;
         setCurrentLang(item.dataset.lang);
+        // Swap logo immediately
+        const logoEl = container.querySelector('#rooster-logo');
+        if (logoEl) logoEl.src = getLogoSrc();
         document.dispatchEvent(new CustomEvent('rooster:lang-change', { detail: item.dataset.lang }));
         langDrop.classList.remove('open');
         langBtn.setAttribute('aria-expanded', 'false');
