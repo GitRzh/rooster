@@ -51,11 +51,23 @@ def is_football_question(question: str) -> bool:
         return True  # on error, allow through — don't block legitimate questions
 
 
+NON_LATIN_LANGS = {"Arabic", "Japanese", "Korean", "Chinese (Simplified)"}
+
 def complete(system: str, user_prompt: str, language: str = "English") -> str:
-    lang_note = (
-        "" if language.lower() == "english"
-        else f"\n\nRespond entirely in {language}. Do not use English at all."
-    )
+    if language.lower() == "english":
+        lang_note = ""
+    else:
+        lang_note = f"\n\nRespond entirely in {language}. Do not use English at all."
+        if language in NON_LATIN_LANGS:
+            lang_note += (
+                "\n\nNAME FORMAT: Include each player's and manager's Latin-script name "
+                "in parentheses immediately after their first mention in non-Latin script. "
+                "Example (Arabic): ميسي (Messi), هالاند (Haaland). "
+                "Example (Japanese): メッシ (Messi), ハーランド (Haaland). "
+                "Example (Korean): 메시 (Messi), 홀란드 (Haaland). "
+                "Example (Chinese): 梅西 (Messi), 哈兰德 (Haaland). "
+                "Never omit the Latin form on first mention."
+            )
 
     no_hedge = (
         "\n\nCRITICAL: Never say 'the context doesn't mention', "
@@ -138,3 +150,73 @@ def extract_names(text: str) -> list[str]:
         return [n.strip() for n in raw.split(",") if n.strip()]
     except Exception:
         return []  # fail silently — frontend falls back to regex
+
+def extract_entity_info(name: str, extract: str) -> dict:
+    """
+    Use 8b-instant to parse a Wikipedia extract into structured player/manager fields.
+    Returns a dict with keys: type, nationality, position, club, currently_manages, age, born, awards
+    Falls back to empty strings on any failure — never crashes.
+    """
+    schema = (
+        '{"type":"player or manager",'
+        '"nationality":"e.g. Turkish",'
+        '"position":"e.g. Midfielder (players only, else empty)",'
+        '"club":"current club for PLAYERS e.g. Inter Milan (empty for managers)",'
+        '"currently_manages":"team managed NOW for MANAGERS e.g. Turkey (empty for players)",'
+        '"born":"e.g. 1985 or 8 February 1985 (empty if unknown)",'
+        '"age":"e.g. 39 (empty if unknown)",'
+        '"awards":["actual trophies or individual awards won, max 4"]}'
+    )
+    rules = (
+        "Rules: "
+        "type=manager if they currently coach/manage a team, else type=player. "
+        "club: players only — just the club name, never a league, never includes and/who/national. "
+        "currently_manages: managers only — the team they manage RIGHT NOW, not clubs they played for. "
+        "awards: real trophies or individual honours won — NOT leagues they merely play in. "
+        "Empty string for unknown/not-applicable fields. Return ONLY the JSON object, nothing else."
+    )
+    payload = {
+        "model": "llama-3.1-8b-instant",
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You extract structured biographical data about footballers and managers "
+                    f"from Wikipedia text. Return ONLY valid JSON. Schema: {schema} {rules}"
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Name: {name}\n\nWikipedia extract:\n{extract[:1500]}"
+            }
+        ],
+        "temperature": 0,
+        "max_tokens": 220,
+    }
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+    empty = {
+        "type": "player", "nationality": "", "position": "",
+        "club": "", "currently_manages": "", "born": "", "age": "", "awards": []
+    }
+    try:
+        res = requests.post(GROQ_URL, headers=headers, json=payload, timeout=10)
+        res.raise_for_status()
+        raw = res.json()["choices"][0]["message"]["content"].strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        import json
+        data = json.loads(raw)
+        return {
+            "type":               data.get("type", "player"),
+            "nationality":        data.get("nationality", ""),
+            "position":           data.get("position", ""),
+            "club":               data.get("club", ""),
+            "currently_manages":  data.get("currently_manages", ""),
+            "born":               data.get("born", ""),
+            "age":                data.get("age", ""),
+            "awards":             data.get("awards", [])[:4],
+        }
+    except Exception:
+        return empty

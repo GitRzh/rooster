@@ -2,24 +2,26 @@
 //  stage3-loading.js — Cinematic wipe loading screen
 // ============================================================
 
-import { API_BASE, getApiLang } from './config.js';
+import { API_BASE, getApiLang, t } from './config.js';
 import { buildNav, buildTicker } from './nav.js';
 import { attachNavListeners }    from './nav.js';
 
-// Match the exact display text shown on the question tabs in stage2-insight.js
-const LOADING_LABELS = {
-  why_winner:         'Why did [winner] win?',
-  why_loser:          'Why did [loser] lose?',
-  who_dominated:      'Who ran the show?',
-  who_underperformed: 'Who was underwhelming?',
-};
+function getLoadingLabels() {
+  return {
+    why_winner:         t('q_why_winner_title'),
+    why_loser:          t('q_why_loser_title'),
+    who_dominated:      t('q_who_dominated_title'),
+    who_underperformed: t('q_who_underperformed_title'),
+  };
+}
 
 function getQuestionLabel(qtype, winner, loser) {
-  const label = LOADING_LABELS[qtype];
-  if (!label) return 'Analyzing…';
+  const labels = getLoadingLabels();
+  const label  = labels[qtype];
+  if (!label) return t('loading_analyzing') + '…';
   return label
-    .replace('[winner]', winner || 'winner')
-    .replace('[loser]',  loser  || 'loser');
+    .replace('[team]', winner || 'winner')
+    .replace('[team]', loser  || 'loser');
 }
 
 export async function renderLoading(container, state, onNavigate) {
@@ -38,7 +40,7 @@ export async function renderLoading(container, state, onNavigate) {
     <div class="loading-body stage" id="loading-stage">
 
       <div class="loading-question-wrap">
-        <div class="loading-question-label">Analyzing</div>
+        <div class="loading-question-label">${t('loading_analyzing')}</div>
         <div class="loading-question-text">${qtype === 'custom' ? (state.customQuestion || qLabel) : qLabel}</div>
         <div class="loading-match-meta">${match.home} ${match.score_home ?? ''}–${match.score_away ?? ''} ${match.away}</div>
       </div>

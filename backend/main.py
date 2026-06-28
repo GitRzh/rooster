@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from org_client import get_live, get_today, get_upcoming, get_yesterday, get_two_days_ago
 from analyzer import analyze
-from groq_client import extract_names
+from groq_client import extract_names, extract_entity_info
 import asyncio
 import cache
 
@@ -49,6 +49,10 @@ class AnalyzeRequest(BaseModel):
 
 class ExtractNamesRequest(BaseModel):
     text: str
+
+class ExtractEntityRequest(BaseModel):
+    name:    str
+    extract: str
 
 
 # ─── HERO PAGE ────────────────────────────────────────────────
@@ -174,6 +178,25 @@ def extract_names_endpoint(req: ExtractNamesRequest):
         names = extract_names(req.text)
         cache.set(cache_key, names)
         return {"names": names}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── EXTRACT ENTITY ──────────────────────────────────────────
+@app.post("/extract-entity")
+def extract_entity_endpoint(req: ExtractEntityRequest):
+    """Extract structured player/manager info from a Wikipedia extract via Groq 8b.
+    Cached by name so repeated hovers on the same player skip the LLM call."""
+    try:
+        import hashlib
+        cache_key = f"entity:{hashlib.md5(req.name.encode()).hexdigest()[:16]}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        info = extract_entity_info(req.name, req.extract)
+        cache.set(cache_key, info)
+        return info
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

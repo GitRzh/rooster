@@ -2,7 +2,7 @@
 //  stage1-hero.js — Hero page: finished / featured / upcoming
 // ============================================================
 
-import { API_BASE, flagImg, flagUrl } from './config.js';
+import { API_BASE, flagImg, flagUrl, t } from './config.js';
 import { buildNav, buildTicker, attachNavListeners } from './nav.js';
 
 let heroData       = null;
@@ -26,7 +26,7 @@ export function renderHero(container, state, onNavigate) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" id="search-input" placeholder="Search team or match…" autocomplete="off" aria-label="Search matches">
+          <input type="text" id="search-input" placeholder="${t('search_placeholder')}" autocomplete="off" aria-label="Search matches">
           <div class="search-results hidden" id="search-results" role="listbox"></div>
         </div>
       </div>
@@ -34,7 +34,7 @@ export function renderHero(container, state, onNavigate) {
       <!-- Finished (left) -->
       <div class="hero-col finished-col">
         <div class="section-head">
-          <span class="section-title">Finished</span>
+          <span class="section-title">${t('section_finished')}</span>
           <span class="section-count" id="finished-count"></span>
         </div>
         <div class="scroll-fade-wrap" id="finished-fade">
@@ -47,7 +47,7 @@ export function renderHero(container, state, onNavigate) {
       <!-- Featured / Pinned (center) -->
       <div class="hero-col featured-col">
         <div class="section-head">
-          <span class="section-title" id="featured-label">Featured</span>
+          <span class="section-title" id="featured-label">${t('section_featured')}</span>
         </div>
         <div id="featured-card-wrap">
           ${renderFeaturedEmpty()}
@@ -58,7 +58,7 @@ export function renderHero(container, state, onNavigate) {
       <!-- Upcoming (right) -->
       <div class="hero-col upcoming-col">
         <div class="section-head">
-          <span class="section-title">Upcoming</span>
+          <span class="section-title">${t('section_upcoming')}</span>
           <span class="section-count" id="upcoming-count"></span>
         </div>
         <div class="scroll-fade-wrap" id="upcoming-fade">
@@ -166,7 +166,7 @@ function renderToday(container, matches, state, onNavigate) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
-        Today
+        ${t('today_label')}
       </div>
       ${matches.map((m, i) => {
         const hf = flagUrl(m.home, 20);
@@ -212,7 +212,7 @@ function truncWord(name, max = 10) {
 
 function renderFeatured(container, match, isPinned, onNavigate) {
   const labelEl = container.querySelector('#featured-label');
-  if (labelEl) labelEl.textContent = isPinned ? 'Pinned' : 'Featured';
+  if (labelEl) labelEl.textContent = isPinned ? t('section_pinned') : t('section_featured');
 
   const wrap = container.querySelector('#featured-card-wrap');
   const hFlag = flagUrl(match.home, 80);
@@ -226,7 +226,7 @@ function renderFeatured(container, match, isPinned, onNavigate) {
         <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12" aria-hidden="true">
           <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
         </svg>
-        ${isPinned ? 'Pinned Match' : 'Featured Match'}
+        ${isPinned ? t('pinned_match') : t('featured_match')}
       </div>
       <div class="featured-body">
         <div class="featured-teams">
@@ -252,8 +252,8 @@ function renderFeatured(container, match, isPinned, onNavigate) {
         </div>
         <div class="featured-info">${match.stage || ''}${match.date ? ' · ' + match.date : ''}</div>
         ${hasScore
-          ? `<button class="btn-featured-insight" id="featured-insight-btn">Analyze this Match →</button>`
-          : `<button class="btn-sch btn-full" disabled>Upcoming · No analysis yet</button>`}
+          ? `<button class="btn-featured-insight" id="featured-insight-btn">${t('analyze_match_btn')}</button>`
+          : `<button class="btn-sch btn-full" disabled>${t('upcoming_no_analysis')}</button>`}
       </div>
     </div>
   `;
@@ -271,14 +271,14 @@ function renderFeatured(container, match, isPinned, onNavigate) {
 function renderFeaturedEmpty() {
   return `
     <div class="featured-card featured-card-empty">
-      <div class="featured-badge">Featured Match</div>
+      <div class="featured-badge">${t('featured_match')}</div>
       <div class="featured-body">
         <div class="featured-empty-msg">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 8v4l3 3"/>
           </svg>
-          <span>Click any match to feature it here</span>
+          <span>${t('click_to_feature')}</span>
         </div>
       </div>
     </div>
@@ -470,7 +470,7 @@ function matchCard(m, btnType, isPinned = false) {
   const hasScore = m.score_home != null;
 
   const btn = btnType === 'insight'
-    ? `<button class="btn-insight mc-btn" aria-label="Insight for ${m.home} vs ${m.away}">Insight</button>`
+    ? `<button class="btn-insight mc-btn" aria-label="Insight for ${m.home} vs ${m.away}">${t('insight_btn')}</button>`
     : `<button class="btn-sch mc-btn" aria-label="Scheduled: ${m.home} vs ${m.away}">TBD</button>`;
 
   return `

@@ -5,17 +5,20 @@
 import {
   flagUrl, wikiUrl, fetchWikiData,
   extractPlayerNames, extractPlayerNamesFromBackend, highlightPlayersAsync, highlightPlayersDeduped,
-  escapeHtml, getApiLang, API_BASE,
+  escapeHtml, getApiLang, API_BASE, t,
 } from './config.js';
 import { buildNav, buildTicker, attachNavListeners } from './nav.js';
 
-const QUESTION_LABELS = {
-  why_winner:         'Why did [winner] win?',
-  why_loser:          'Why did [loser] lose?',
-  who_dominated:      'Who ran the show?',
-  who_underperformed: 'Who was underwhelming?',
-  custom:             'Q&A — Your Questions',
-};
+function getQuestionLabel(qtype) {
+  const map = {
+    why_winner:         t('q_why_winner_title'),
+    why_loser:          t('q_why_loser_title'),
+    who_dominated:      t('q_who_dominated_title'),
+    who_underperformed: t('q_who_underperformed_title'),
+    custom:             t('q_custom_sub'),
+  };
+  return map[qtype] || 'Analysis';
+}
 
 export function renderResult(container, state, onNavigate) {
   const match  = state.pinnedMatch;
@@ -27,9 +30,7 @@ export function renderResult(container, state, onNavigate) {
 
   const winner = match.winner || match.home;
   const loser  = match.loser  || match.away;
-  const qLabel = (QUESTION_LABELS[qtype] || 'Analysis')
-    .replace('[winner]', winner)
-    .replace('[loser]', loser);
+  const qLabel = getQuestionLabel(qtype);
 
   const hFlag = flagUrl(match.home, 80);
   const aFlag = flagUrl(match.away, 80);
@@ -74,7 +75,7 @@ export function renderResult(container, state, onNavigate) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
-              Questions
+              ${t('questions_btn')}
             </button>
           </div>
         </div>
@@ -91,8 +92,8 @@ export function renderResult(container, state, onNavigate) {
       <aside class="result-right" id="result-right">
         <div class="result-right-label" id="result-right-label" style="display:none"></div>
         <div id="entity-panel">
-          <div class="entity-card-empty">Hover a highlighted name to see their profile here.</div>
-          <div class="result-right-hint">Hover a name to load their profile</div>
+          <div class="entity-card-empty">${t('hover_hint')}</div>
+          <div class="result-right-hint">${t('hover_hint')}</div>
         </div>
       </aside>
 
@@ -138,11 +139,11 @@ async function renderAnswerCards(container, result, match) {
 
   areaEl.innerHTML = `
     <div class="answer-card" id="card-tldr">
-      <div class="answer-card-head">TL;DR</div>
+      <div class="answer-card-head">${t('tldr')}</div>
       <div class="answer-card-body" id="tldr-body">${escapeHtml(tldr)}</div>
     </div>
     <div class="answer-card answer-card-narrative" id="card-full">
-      <div class="answer-card-head">Full Narrative</div>
+      <div class="answer-card-head">${t('full_narrative')}</div>
       <div class="answer-card-body answer-card-body-scroll" id="full-body">${escapeHtml(full)}</div>
     </div>
   `;
@@ -244,11 +245,11 @@ async function attachQAResult(container, result, match, state, onNavigate) {
   areaEl.innerHTML = `
     ${qAsked ? `<div class="qa-result-question">"${qAsked}"</div>` : ''}
     <div class="answer-card" id="card-tldr">
-      <div class="answer-card-head">TL;DR</div>
+      <div class="answer-card-head">${t('tldr')}</div>
       <div class="answer-card-body" id="tldr-body">${escapeHtml(tldrClean)}</div>
     </div>
     <div class="answer-card answer-card-narrative" id="card-full">
-      <div class="answer-card-head">Full Narrative</div>
+      <div class="answer-card-head">${t('full_narrative')}</div>
       <div class="answer-card-body answer-card-body-scroll" id="full-body">${escapeHtml(fullClean)}</div>
     </div>
   `;
@@ -419,17 +420,32 @@ async function loadEntityCard(container, name) {
   }
 
   const extract  = wikiData.extract || '';
-  const isMgr    = /manager|coach|head coach|managed|coaching/i.test(extract);
   const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  // LLM-powered structured extraction — replaces all brittle regex parsers
+  let info = null;
+  try {
+    const res = await fetch(`${API_BASE}/extract-entity`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, extract }),
+    });
+    if (res.ok) info = await res.json();
+  } catch { /* fall through to regex fallback */ }
+
+  const isMgr = info
+    ? info.type === 'manager'
+    : /manager|coach|head coach|managed|coaching/i.test(extract);
 
   const labelEl = container.querySelector('#result-right-label');
   if (labelEl) {
-    labelEl.textContent = isMgr ? 'Manager Info' : 'Player Info';
+    labelEl.textContent = isMgr ? t('manager_info') : t('player_info');
     labelEl.style.display = 'block';
   }
+
   panel.innerHTML = isMgr
-    ? buildManagerCard(name, wikiData, extract, initials)
-    : buildPlayerCard(name, wikiData, extract, initials);
+    ? buildManagerCard(name, wikiData, extract, initials, info)
+    : buildPlayerCard(name, wikiData, extract, initials, info);
 }
 
 // ── Position → colour (matches ROOSTER palette) ───────────────
@@ -444,24 +460,25 @@ function positionColor(pos) {
 }
 
 // ── Player card ───────────────────────────────────────────────
-function buildPlayerCard(name, wikiData, extract, initials) {
+function buildPlayerCard(name, wikiData, extract, initials, info = null) {
   const url      = wikiData.url;
-  const nat      = parseNationality(extract);
-  const pos      = parsePosition(extract);
-  const club     = parseClub(extract);
+  // Prefer LLM-extracted info; fall back to regex for each field individually
+  const nat      = info?.nationality  || parseNationality(extract);
+  const pos      = info?.position     || parsePosition(extract);
+  const club     = info?.club         || parseClub(extract);
   const posColor = positionColor(pos);
-  const born     = parseBorn(extract);
-  const age      = born ? computeAge(born) : null;
+  const born     = info?.born         || parseBorn(extract);
+  const age      = info?.age          || (born ? computeAge(born) : null);
   const wcGoals  = parseWCGoals(extract);
-  const awards   = parseAwards(extract);
+  const awards   = (info?.awards?.length ? info.awards : null) || parseAwards(extract);
 
   const rows = [
-    nat     && { label: 'Nationality',      val: nat,                    color: null },
-    pos     && { label: 'Position',         val: pos,                    color: posColor },
-    club    && { label: 'Club',             val: club,                   color: null },
-    age     && { label: 'Age',              val: age,                    color: null },
-    wcGoals && { label: 'FIFA 2026 Goals',  val: wcGoals,                color: null },
-    awards.length && { label: 'Awards',     val: awards.join(', '),      color: null },
+    nat     && { label: t('stat_nationality'),  val: nat,               color: null },
+    pos     && { label: t('stat_position'),     val: pos,               color: posColor },
+    club    && { label: t('stat_club'),         val: club,              color: null },
+    age     && { label: t('stat_age'),          val: age,               color: null },
+    wcGoals && { label: t('stat_wc_goals'),     val: wcGoals,           color: null },
+    awards.length && { label: t('stat_awards'), val: awards.join(', '), color: null },
   ].filter(Boolean);
 
   return `
@@ -501,20 +518,22 @@ function buildPlayerCard(name, wikiData, extract, initials) {
 }
 
 // ── Manager card ──────────────────────────────────────────────
-function buildManagerCard(name, wikiData, extract, initials) {
-  const url     = wikiData.url;
-  const nat         = parseNationality(extract);
-  const curRole     = parseCurrentRole(extract);
+function buildManagerCard(name, wikiData, extract, initials, info = null) {
+  const url         = wikiData.url;
+  const nat         = info?.nationality        || parseNationality(extract);
+  // For managers, LLM returns currently_manages (team they manage now)
+  // club field on managers = team they manage, not a playing club
+  const curRole     = info?.currently_manages  || info?.club || parseCurrentRole(extract);
   const prevManaged = parsePreviouslyManaged(extract);
   const yearsActive = parseYearsActive(extract);
-  const trophies    = parseHonours(extract);
+  const trophies    = (info?.awards?.length ? info.awards : null) || parseHonours(extract);
 
   const rows = [
-    nat         && { label: 'Nationality',        val: nat },
-    curRole     && { label: 'Currently Manages',  val: curRole },
-    prevManaged && { label: 'Previously Managed', val: prevManaged },
-    yearsActive && { label: 'Years Active',       val: yearsActive },
-    trophies.length && { label: 'Trophies',       val: trophies.join(', ') },
+    nat         && { label: t('stat_nationality'),        val: nat },
+    curRole     && { label: t('stat_currently_manages'),  val: curRole },
+    prevManaged && { label: t('stat_previously_managed'), val: prevManaged },
+    yearsActive && { label: t('stat_years_active'),       val: yearsActive },
+    trophies.length && { label: t('stat_trophies'),       val: trophies.join(', ') },
   ].filter(Boolean);
 
   return `
@@ -555,9 +574,22 @@ function buildManagerCard(name, wikiData, extract, initials) {
 
 // ── Parsers ───────────────────────────────────────────────────
 function parseNationality(text) {
-  const m = text.match(/is (?:a |an )?([A-Z][a-z]+(?:-[A-Z][a-z]+)?(?:\s[A-Z][a-z]+)?)(?:\s+(?:professional|former|retired|international))*\s+(?:football(?:er| manager| coach)?|manager|coach)/i);
+  // Two-pass: find nationality adjective before footballer/manager/coach
+  // Pass 1: strict — nationality word immediately before football keyword (skip adjectives)
+  const SKIP = /^(?:professional|former|retired|international|association)$/i;
+  const NAT_RE = /is (?:a |an )?((?:[A-Z][a-z]+(?:-[A-Z][a-z]+)?\s+)*)([A-Z][a-z]+(?:-[A-Z][a-z]+)?)\s+(?:football(?:er| manager| coach)?|manager|coach)/i;
+  const m = text.match(NAT_RE);
   if (!m) return null;
-  return m[1].replace(/\s+(professional|former|retired|international|football)$/i, '').trim();
+  // m[2] is the last capitalised word before the football keyword
+  // m[1] is any words before it — walk backwards to find the nationality
+  const candidate = m[2].trim();
+  if (!SKIP.test(candidate)) return candidate;
+  // candidate was an adjective — try the word before it
+  const words = (m[1] || '').trim().split(/\s+/).filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    if (!SKIP.test(words[i])) return words[i].replace(/-$/, '');
+  }
+  return null;
 }
 
 function parsePosition(text) {
@@ -571,8 +603,19 @@ function parseBorn(text) {
 }
 
 function parseClub(text) {
-  const m = text.match(/(?:plays|playing)\s+for\s+([A-Z][A-Za-z\s]+?)(?:\s+F\.?C\.?)?[,.\s]/);
-  return m ? m[1].trim() : null;
+  const LEAGUES = [
+    'Bundesliga', 'Premier League', 'La Liga', 'Serie A', 'Ligue 1',
+    'MLS', 'Eredivisie', 'Primeira Liga', 'Super Lig', 'Süper Lig',
+  ];
+  // Stop capture at: in the, since, on loan, and, who, where, ,  .  (
+  const m = text.match(/(?:plays|playing|contracted to|joining|joined)\s+for\s+([A-Z][A-Za-z\s]+?)(?:\s+(?:in the|since|on loan|and\s|who\s|where\s|F\.?C\.?)|[,.(]|$)/i)
+         || text.match(/(?:is a|was a)\s+[A-Za-z\s]+?\s+for\s+([A-Z][A-Za-z\s]{2,25}?)(?:\s*(?:and|who|where)|[,.(]|$)/i);
+  if (!m) return null;
+  const club = m[1].trim();
+  if (LEAGUES.some(l => club === l || club.endsWith(l))) return null;
+  // Reject if it looks like a sentence fragment (contains lowercase connector words)
+  if (/\b(and|the|who|where|captains|national)\b/i.test(club)) return null;
+  return club;
 }
 
 function parseFormerClub(text) {
@@ -617,13 +660,41 @@ function parsePrevWCGoals(text) {
 }
 
 function parseAwards(text) {
-  const known = [
-    'Ballon d\'Or', 'FIFA Best', 'Golden Boot', 'Golden Ball', 'Golden Glove',
-    'UEFA Best', 'PFA Players\' Player', 'FWA Footballer', 'Premier League Player',
-    'Champions League', 'World Cup', 'Euro', 'Copa América', 'La Liga',
-    'Serie A', 'Bundesliga', 'Ligue 1', 'FA Cup', 'Copa del Rey',
+  // Individual awards — present in text = won it
+  const INDIVIDUAL = [
+    "Ballon d'Or", 'FIFA Best', 'Golden Boot', 'Golden Ball', 'Golden Glove',
+    'UEFA Best Player', "PFA Players' Player of the Year", 'FWA Footballer of the Year',
+    'Premier League Player of the Season', 'UEFA Champions League Player',
   ];
-  return known.filter(a => text.includes(a)).slice(0, 4);
+  // Team trophies — only count if adjacent to trophy/winner language, not just mentioned as a league
+  const TEAM_TROPHIES = [
+    { label: 'Champions League', pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'World Cup',        pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'Copa América',     pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'Euro ',            pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'FA Cup',           pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'Copa del Rey',     pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'La Liga',          pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'Serie A',          pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'Bundesliga',       pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'Ligue 1',         pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+    { label: 'Premier League',   pattern: /won|winner|champion|trophy|title|lifted|medal/i },
+  ];
+
+  const found = [
+    ...INDIVIDUAL.filter(a => text.includes(a)),
+    ...TEAM_TROPHIES
+      .filter(({ label, pattern }) => {
+        const idx = text.indexOf(label);
+        if (idx === -1) return false;
+        // Check a 120-char window around the mention for trophy language
+        const window = text.slice(Math.max(0, idx - 60), idx + label.length + 60);
+        return pattern.test(window);
+      })
+      .map(({ label }) => label.trim()),
+  ];
+
+  return [...new Set(found)].slice(0, 4);
 }
 
 function parseHonours(text) {

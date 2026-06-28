@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from prompts import SYSTEM_PROMPT, QUESTION_MAP, DRAW_ALLOWED, RTL_LANGUAGES, custom_question_prompt
 from groq_client import complete, is_football_question
 from docling_client import get_match_context
+from org_client import get_coaches
 
 # Minimum hours after match end before Wikipedia is reliable enough
 WIKI_MIN_DELAY_HOURS = 1
@@ -78,6 +79,12 @@ def analyze(match: dict, question_type: str, language: str = "English", custom_q
             }
     except Exception:
         pass  # If time parsing fails, proceed anyway
+
+    # Enrich match with coach names (fetched independently — free tier doesn't include them in match objects)
+    if not match.get("home_coach") and not match.get("away_coach"):
+        coaches = get_coaches(match["home"], match["away"])
+        match.setdefault("home_coach", coaches["home_coach"])
+        match.setdefault("away_coach", coaches["away_coach"])
 
     # Fetch Wikipedia context via Docling (cached 3hrs)
     wiki_context = get_match_context(

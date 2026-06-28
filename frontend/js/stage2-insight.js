@@ -2,7 +2,7 @@
 //  stage2-insight.js — Question tabs + MVP panel
 // ============================================================
 
-import { flagUrl, flagImg, API_BASE, getApiLang } from './config.js';
+import { flagUrl, flagImg, API_BASE, getApiLang, t } from './config.js';
 import { buildNav, buildTicker, attachNavListeners } from './nav.js';
 
 export function renderInsight(container, state, onNavigate) {
@@ -52,7 +52,6 @@ export function renderInsight(container, state, onNavigate) {
               ? match.away_flag.replace(/class="[^"]*"/, 'class="p-flag"').replace(/\s*width="[^"]*"/, '').replace(/\s*height="[^"]*"/, '')
               : flagImg(match.away, 'p-flag', 80)}
             ${match.stage ? `<span class="p-meta">${match.stage}</span>` : ''}
-            ${isDraw ? `<span class="draw-badge">Draw</span>` : ''}
           </div>
         </div>
         <button class="btn-back" id="change-match-btn" aria-label="Change match">
@@ -107,25 +106,18 @@ function buildQTab(match, type, winner, loser, isDraw) {
   const winnerFlag = isDraw ? homeFlag : (winner === match.away ? awayFlag : homeFlag);
   const loserFlag  = isDraw ? awayFlag : (loser  === match.away ? awayFlag : homeFlag);
 
-  const trunc = (name, max = 18) => {
-    if (name.length <= max) return name;
-    const cut = name.slice(0, max);
-    const lastSpace = cut.lastIndexOf(' ');
-    return (lastSpace > 4 ? cut.slice(0, lastSpace) : cut).trimEnd() + '…';
-  };
-
   const defs = {
     why_winner: {
       flag:    winnerFlag,
-      title:   isDraw ? `Why did ${trunc(match.home)} win?` : `Why did ${trunc(winner)} win?`,
-      sub:     'Decisive factors and key moments',
+      title:   t('q_why_winner_title'),
+      sub:     t('q_why_winner_sub'),
       cls:     '',
       blocked: isDraw,
     },
     why_loser: {
       flag:    loserFlag,
-      title:   isDraw ? `Why did ${trunc(match.away)} lose?` : `Why did ${trunc(loser)} lose?`,
-      sub:     'What cost them the match?',
+      title:   t('q_why_loser_title'),
+      sub:     t('q_why_loser_sub'),
       cls:     '',
       blocked: isDraw,
     },
@@ -133,8 +125,8 @@ function buildQTab(match, type, winner, loser, isDraw) {
       flag:    isDraw
         ? `<div class="qt-flag qt-flag-unknown" style="display:flex;align-items:center;justify-content:center">?</div>`
         : winnerFlag,
-      title:   'Who ran the show?',
-      sub:     'The entity that dominated',
+      title:   t('q_who_dominated_title'),
+      sub:     t('q_who_dominated_sub'),
       cls:     '',
       blocked: false,
     },
@@ -142,15 +134,15 @@ function buildQTab(match, type, winner, loser, isDraw) {
       flag:    isDraw
         ? `<div class="qt-flag qt-flag-unknown" style="display:flex;align-items:center;justify-content:center">?</div>`
         : loserFlag,
-      title:   'Who was underwhelming?',
-      sub:     'Failed to show up when it mattered',
+      title:   t('q_who_underperformed_title'),
+      sub:     t('q_who_underperformed_sub'),
       cls:     '',
       blocked: false,
     },
     custom: {
       flag:    null,
-      title:   'Ask your own question',
-      sub:     'Q&A — anything about this match',
+      title:   t('q_custom_title'),
+      sub:     t('q_custom_sub'),
       cls:     'q-qa',
       blocked: false,
     },
@@ -172,25 +164,23 @@ function buildQTab(match, type, winner, loser, isDraw) {
         <div class="qa-info-wrap" style="position:absolute;top:12px;right:14px;z-index:10;">
           <button class="qa-info-btn" aria-label="What can I ask?" tabindex="0">i</button>
           <div class="qa-info-tooltip" role="tooltip">
-            <div class="qa-info-title">What can I ask?</div>
+            <div class="qa-info-title">${t('tooltip_title')}</div>
             <div class="qa-info-section">
-              <div class="qa-info-label">Ask about</div>
+              <div class="qa-info-label">${t('tooltip_ask_about_label')}</div>
               <div class="qa-info-examples">
-                Tactics &amp; formations · Player performances · Goals &amp; key moments · Manager decisions · "What if" scenarios · Referee calls · Match momentum
+                ${t('tooltip_ask_about_body')}
               </div>
             </div>
             <div class="qa-info-section">
-              <div class="qa-info-label">Won't work</div>
+              <div class="qa-info-label">${t('tooltip_wont_work_label')}</div>
               <div class="qa-info-examples qa-info-wont">
-                Single letters or gibberish · Topics unrelated to this match (cooking, politics, coding…)
+                ${t('tooltip_wont_work_body')}
               </div>
             </div>
             <div class="qa-info-section">
-              <div class="qa-info-label">Examples</div>
+              <div class="qa-info-label">${t('tooltip_examples_label')}</div>
               <div class="qa-info-examples">
-                "Why didn't the manager sub earlier?"<br>
-                "Who was the best player on the pitch?"<br>
-                "What if [Player] had started from the first minute?"
+                ${t('tooltip_examples_body')}
               </div>
             </div>
           </div>
@@ -204,12 +194,12 @@ function buildQTab(match, type, winner, loser, isDraw) {
           <textarea
             class="q-inline-input"
             id="q-inline-input"
-            placeholder="Enter your question here…"
+            placeholder="${t('q_custom_placeholder')}"
             rows="1"
             style="overflow:hidden;resize:none;"
             aria-label="Your question about this match"></textarea>
           <button class="q-inline-btn" id="q-inline-submit" aria-label="Analyze question">
-            Analyze →
+            ${t('analyze_btn')}
           </button>
         </div>
         <div class="q-inline-reject" id="q-inline-reject"></div>
@@ -226,9 +216,9 @@ function buildQTab(match, type, winner, loser, isDraw) {
         ${d.flag || `<div class="qt-flag flag-placeholder"></div>`}
         <span class="q-tab-title">${isBlocked ? `<s>${d.title}</s>` : d.title}</span>
       </div>
-      <span class="q-tab-sub">${isBlocked ? 'Match was a draw' : d.sub}</span>
+      <span class="q-tab-sub">${isBlocked ? t('draw_match') : d.sub}</span>
       ${isBlocked
-        ? `<span class="q-blocked-badge">Draw</span>`
+        ? `<span class="q-blocked-badge">${t('draw_match')}</span>`
         : `<span class="q-tab-arrow" aria-hidden="true">→</span>`}
     </div>
   `;
@@ -326,7 +316,7 @@ function attachQTabs(container, match, state, onNavigate, isDraw) {
     // Client-side topic gate — fast, no API call needed
     if (!looksFootballRelated(q)) {
       if (rejectEl) {
-        rejectEl.textContent = "⚠ Too short.";
+        rejectEl.textContent = t('q_too_short');
         rejectEl.classList.add('visible');
       }
       inputEl.focus();

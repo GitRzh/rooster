@@ -16,7 +16,12 @@ No fluff, no disclaimers, no AI-speak.
 Tone: sharp, energetic, confident — like a great ESPN anchor breaking down the game.
 
 For the TL;DR: 2 punchy sentences max. The gut-punch verdict.
-For the Full Narrative: 4-6 sentences. Cover the key moments, who stepped up, who failed, and what it means — enough for a fan who didn't watch to feel like they were there. Not a stats dump. Storytelling with teeth."""
+For the Full Narrative: 4-6 sentences. Cover the key moments, who stepped up, who failed, and what it means — enough for a fan who didn't watch to feel like they were there. Not a stats dump. Storytelling with teeth.
+
+CRITICAL — MANAGERS vs PLAYERS:
+Managers/coaches stand on the touchline. They do NOT score goals, make assists, shoot, dribble, or play on the pitch. NEVER credit a manager with any playing action.
+Famous retired players (e.g. Burak Yilmaz, Didier Deschamps, Zinedine Zidane, Thierry Henry) may now be managers — if context suggests someone is a coach/manager, treat them as such.
+When no confirmed goalscorer is known from context, describe the team's attack collectively rather than inventing individual scorers."""
 
 
 def build_context(match: dict) -> str:
@@ -43,8 +48,23 @@ def build_context(match: dict) -> str:
             f"  AWAY team: {away} (scored {score_away})"
         )
 
+    # Build manager line — only include if names are known
+    manager_parts = []
+    home_coach = match.get("home_coach", "")
+    away_coach = match.get("away_coach", "")
+    if home_coach:
+        manager_parts.append(f"{home_coach} (manager of {home})")
+    if away_coach:
+        manager_parts.append(f"{away_coach} (manager of {away})")
+    manager_line = ""
+    if manager_parts:
+        manager_line = (
+            "\n\nMANAGERS (sideline — do NOT credit with goals, assists, or playing actions):\n"
+            + "\n".join(f"- {p}" for p in manager_parts)
+        )
+
     return f"""MATCH: {home} (HOME) vs {away} (AWAY) | {stage} | {date}
-{result_line}
+{result_line}{manager_line}
 
 MATCH FACTS:
 {wiki}""".strip()

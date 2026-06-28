@@ -191,23 +191,32 @@ def _fmt_match(m: dict) -> dict:
         group_label = raw_group.replace("GROUP_", "Group ").replace("_", " ").title()
         stage_label = f"Group Stage \u00b7 {group_label}"
 
+    # Coach names — present in v4 API under homeTeam.coach / awayTeam.coach
+    # Gracefully absent on free tier or older fixtures — never crashes
+    home_coach = (m.get("homeTeam") or {}).get("coach", {}) or {}
+    away_coach = (m.get("awayTeam") or {}).get("coach", {}) or {}
+    home_coach_name = home_coach.get("name") or ""
+    away_coach_name = away_coach.get("name") or ""
+
     return {
-        "id":         m["id"],
-        "home":       home,
-        "away":       away,
-        "home_flag":  _flag(home),
-        "away_flag":  _flag(away),
-        "score_home": score_h,
-        "score_away": score_a,
-        "status":     m["status"],
-        "minute":     m.get("minute"),
-        "date":       m["utcDate"][:10],
-        "time":       m["utcDate"][11:16],
-        "stage":      stage_label,
-        "group":      raw_group,
-        "winner":     winner,
-        "loser":      loser,
-        "is_draw":    is_draw,
+        "id":             m["id"],
+        "home":           home,
+        "away":           away,
+        "home_flag":      _flag(home),
+        "away_flag":      _flag(away),
+        "score_home":     score_h,
+        "score_away":     score_a,
+        "status":         m["status"],
+        "minute":         m.get("minute"),
+        "date":           m["utcDate"][:10],
+        "time":           m["utcDate"][11:16],
+        "stage":          stage_label,
+        "group":          raw_group,
+        "winner":         winner,
+        "loser":          loser,
+        "is_draw":        is_draw,
+        "home_coach":     home_coach_name,
+        "away_coach":     away_coach_name,
     }
 
 
@@ -300,4 +309,32 @@ def get_hero_data() -> dict:
         "yesterday":    get_yesterday(),
         "two_days_ago": get_two_days_ago(),
         "upcoming":     get_upcoming(),
+    }
+
+
+def get_coaches(home: str, away: str) -> dict:
+    """
+    Fetch coach names for two teams from /competitions/WC/teams (free tier endpoint).
+    Returns {"home_coach": "...", "away_coach": "..."} — empty strings on any failure.
+    Cached under key "coaches" for 24 hrs (TTL handled by cache layer).
+    """
+    cached = cache.get("coaches")
+    if cached is None:
+        try:
+            data = _get(f"/competitions/{WC_CODE}/teams")
+            coaches = {}
+            for team in data.get("teams", []):
+                name  = team.get("name", "")
+                coach = (team.get("coach") or {}).get("name") or ""
+                if name:
+                    coaches[name] = coach
+            cache.set("coaches", coaches, ttl=86400)  # 24 hrs
+        except Exception:
+            coaches = {}
+    else:
+        coaches = cached
+
+    return {
+        "home_coach": coaches.get(home, ""),
+        "away_coach": coaches.get(away, ""),
     }

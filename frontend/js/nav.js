@@ -2,12 +2,12 @@
 //  nav.js — Shared nav renderer + ticker
 // ============================================================
 
-import { LANGUAGES, getCurrentLang, setCurrentLang } from './config.js';
+import { LANGUAGES, getCurrentLang, setCurrentLang, t } from './config.js';
 
 const NAV_ITEMS = [
-  { id: 'home',     label: 'Home',      stage: 'hero' },
-  { id: 'analysis', label: 'Analysis',  stage: 'insight' },
-  { id: 'tech',     label: 'Used Tech', stage: 'tech' },
+  { id: 'home',     labelKey: 'nav_home',     stage: 'hero' },
+  { id: 'analysis', labelKey: 'nav_analysis', stage: 'insight' },
+  { id: 'tech',     labelKey: 'nav_tech',     stage: 'tech' },
 ];
 
 export function buildNav(activeStage, onNavigate) {
@@ -18,7 +18,7 @@ export function buildNav(activeStage, onNavigate) {
       </a>
       <div class="nav-links">
         ${NAV_ITEMS.map(n =>
-          `<a href="#" class="nav-link${n.stage === activeStage ? ' active' : ''}" data-nav="${n.stage}">${n.label}</a>`
+          `<a href="#" class="nav-link${n.stage === activeStage ? ' active' : ''}" data-nav="${n.stage}">${t(n.labelKey)}</a>`
         ).join('')}
       </div>
       <div class="lang-drop" id="lang-drop" aria-label="Language">

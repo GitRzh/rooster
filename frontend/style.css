@@ -2129,17 +2129,70 @@ body {
 /* ============================================================
    RTL SUPPORT
    ============================================================ */
-[dir="rtl"] .r-nav           { flex-direction: row-reverse; }
+[dir="rtl"] .r-nav            { flex-direction: row-reverse; }
 [dir="rtl"] .hero-body        { direction: rtl; }
-[dir="rtl"] .match-card       { flex-direction: row-reverse; }
-[dir="rtl"] .m-teams          { flex-direction: row-reverse; }
-[dir="rtl"] .pinned-bar       { flex-direction: row-reverse; }
-[dir="rtl"] .pinned-match-info{ flex-direction: row-reverse; }
+
+/* ── Stage 1: Match cards ── */
+/* All flag→score→flag rows are symmetrical — force LTR layout, allow RTL text inside */
+
+/* Container-level LTR: grid/flex column ORDER is controlled by direction, not bidi */
+[dir="rtl"] .search-results    { direction: ltr; }
+[dir="rtl"] .search-result-item { direction: ltr; }
+[dir="rtl"] .sri-row           { direction: ltr; }
+[dir="rtl"] .mc-inner          { direction: ltr; }
+[dir="rtl"] .today-row         { direction: ltr; }
+[dir="rtl"] .featured-teams    { direction: ltr; }
+[dir="rtl"] .match-card        { direction: ltr; }
+
+/* Re-apply RTL to text-only elements inside these LTR containers */
+[dir="rtl"] .mc-name           { direction: rtl; unicode-bidi: isolate; text-align: right; }
+[dir="rtl"] .t-team            { direction: rtl; unicode-bidi: isolate; }
+[dir="rtl"] .s-home            { direction: rtl; unicode-bidi: isolate; }
+[dir="rtl"] .s-away            { direction: rtl; unicode-bidi: isolate; text-align: right; }
+
+/* Score/date strings: always LTR so "1–3" doesn't bidi-swap */
+[dir="rtl"] .mc-score,
+[dir="rtl"] .mc-vs,
+[dir="rtl"] .t-score,
+[dir="rtl"] .s-score,
+[dir="rtl"] .s-date,
+[dir="rtl"] .featured-score    { direction: ltr; unicode-bidi: isolate; }
+
+/* Search result status badge — align right */
+[dir="rtl"] .sri-status        { text-align: right; direction: rtl; }
+
+/* ── Stage 2: Insight layout ── */
 [dir="rtl"] .insight-layout   { direction: rtl; }
-[dir="rtl"] .result-body      { direction: rtl; }
-[dir="rtl"] .result-left      { border-right: none; border-left: 1px solid var(--border); }
-[dir="rtl"] .result-right     { border-left: none; border-right: 1px solid var(--border); }
+
+/* ── Stage 4: Result page ── */
+/* Do NOT set direction:rtl on result-body — it cascades badly into grid children */
+[dir="rtl"] .result-left      { border-right: none; border-left: 1px solid var(--border); order: 2; padding: 24px 28px; }
+[dir="rtl"] .result-right     { border-left: none; border-right: 1px solid var(--border); order: 1; padding: 20px 16px; }
+/* result-match-display is symmetrical (flag · score · flag) — no RTL overrides needed */
+/* Force LTR on score so bidi doesn't swap "1–3" to "3–1" in RTL context */
+[dir="rtl"] .result-score-str  { direction: ltr; unicode-bidi: isolate; }
+[dir="rtl"] .result-match-meta { direction: ltr; unicode-bidi: isolate; }
+[dir="rtl"] .result-match-date { direction: ltr; unicode-bidi: isolate; }
+/* Team names: keep ltr rendering so "Cape Verde Islands" doesn't truncate on wrong side */
+[dir="rtl"] .result-team-name { direction: ltr; unicode-bidi: plaintext; text-align: center; }
+/* Pinned badge bar — column layout stays the same, just align text right */
+[dir="rtl"] .result-pinned-bar { text-align: right; }
+[dir="rtl"] .result-pinned-badge { flex-direction: row-reverse; }
+/* Header-right row (question badge + back button) — only reverse item order */
+[dir="rtl"] .result-header-right { flex-direction: row-reverse; }
+/* Answer text */
+[dir="rtl"] .answer-card-body-scroll { direction: rtl; text-align: right; }
+[dir="rtl"] .answer-card-head,
+[dir="rtl"] .answer-card-body { text-align: right; direction: rtl; }
+/* Right panel (entity sidebar) */
+[dir="rtl"] .entity-card-empty,
+[dir="rtl"] .result-right-hint { text-align: right; direction: rtl; }
+[dir="rtl"] .entity-stat { flex-direction: row-reverse; text-align: right; }
+
+/* ── Stage 2: Question tabs ── */
 [dir="rtl"] .q-tab-arrow      { transform: rotate(180deg) translateX(-4px); }
+
+/* ── Ticker ── */
 [dir="rtl"] .ticker-inner     { animation-direction: reverse; }
 /* Rooster track stays LTR — rooster always runs left to right */
 
@@ -2244,6 +2297,10 @@ body {
   grid-template-columns: 1fr 260px !important;
 }
 
+[dir="rtl"] .result-body {
+  grid-template-columns: 260px 1fr !important;
+}
+
 /* ── Q&A Info icon + tooltip ── */
 .qa-info-wrap {
   position: relative;
@@ -2337,4 +2394,98 @@ body {
 
 .qa-info-examples.qa-info-wont {
   color: rgba(239,68,68,0.8);
+}
+
+/* ============================================================
+   I18N — RTL, CJK overflow, and button/badge clamp additions
+   ============================================================ */
+
+/* ── RTL: tooltip flips from right-of-icon to left-of-icon ── */
+[dir="rtl"] .qa-info-tooltip {
+  left: auto;
+  right: calc(100% + 10px);
+  text-align: right;
+}
+
+/* ── RTL: question card text alignment ── */
+[dir="rtl"] .q-tab-title,
+[dir="rtl"] .q-tab-sub,
+[dir="rtl"] .q-inline-input,
+[dir="rtl"] .qa-info-title,
+[dir="rtl"] .qa-info-label,
+[dir="rtl"] .qa-info-examples {
+  text-align: right;
+  direction: rtl;
+}
+
+[dir="rtl"] .q-tab-header {
+  flex-direction: row-reverse;
+}
+
+/* ── RTL: pinned bar layout ── */
+/* pinned-bar / pb-left / pinned-match-info are symmetrical — no flip needed */
+
+/* ── RTL: result page (duplicates already handled in RTL SUPPORT block above) ── */
+
+/* ── Overflow guard: nav links ── */
+.nav-link {
+  font-size: clamp(8px, 1vw, 11px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+/* ── Overflow guard: q-tab-title ── */
+.q-tab-title {
+  font-size: clamp(11px, 1.4vw, 14px);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Overflow guard: analyze button ── */
+.q-inline-btn {
+  font-size: clamp(9px, 1.1vw, 11px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ── Overflow guard: q-blocked-badge ── */
+.q-blocked-badge {
+  font-size: clamp(8px, 0.9vw, 10px);
+  white-space: nowrap;
+}
+
+/* ── Overflow guard: answer card head (TL;DR / Full Narrative) ── */
+.answer-card-head {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: clamp(9px, 1vw, 11px);
+}
+
+/* ── CJK: prevent mid-character line breaks in badges/buttons ── */
+:lang(ja) .q-inline-btn,
+:lang(ko) .q-inline-btn,
+:lang(zh) .q-inline-btn {
+  word-break: keep-all;
+}
+
+:lang(ja) .q-tab-title,
+:lang(ko) .q-tab-title,
+:lang(zh) .q-tab-title {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+/* ── CJK: slightly smaller for compact glyphs in header ── */
+:lang(ja) .nav-link,
+:lang(ko) .nav-link,
+:lang(zh) .nav-link {
+  font-size: clamp(9px, 1.1vw, 12px);
+  letter-spacing: 0;
 }
