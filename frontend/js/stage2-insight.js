@@ -3,7 +3,7 @@
 // ============================================================
 
 import { flagUrl, flagImg, API_BASE, getApiLang, t } from './config.js';
-import { buildNav, buildTicker, attachNavListeners } from './nav.js';
+import { attachNavListeners } from './nav.js';
 
 export function renderInsight(container, state, onNavigate) {
   const match = state.pinnedMatch;
@@ -28,8 +28,6 @@ export function renderInsight(container, state, onNavigate) {
   const scoreStr = homeScore != null ? `${homeScore}–${awayScore}` : 'vs';
 
   container.innerHTML = `
-    ${buildNav('insight', onNavigate)}
-    ${buildTicker([])}
     <div class="insight-body stage">
 
       <!-- Pinned bar -->

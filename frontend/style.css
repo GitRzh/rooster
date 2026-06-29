@@ -66,135 +66,6 @@ body {
 }
 
 /* ============================================================
-   NAV
-   ============================================================ */
-.r-nav {
-  position: sticky;
-  top: 0;
-  z-index: 200;
-  height: var(--nav-h);
-  background: #0d0d15;
-  border-bottom: 1px solid var(--border-y);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 28px;
-  gap: 16px;
-}
-
-.logo-wrap {
-  display: flex;
-  align-items: center;
-  text-decoration: none;
-  flex-shrink: 0;
-}
-
-.logo-img {
-  height: 40px;
-  width: 178px;
-  object-fit: contain;
-  object-position: left center;
-  filter: drop-shadow(0 0 10px rgba(245,230,66,0.25));
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.nav-link {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted-bright);
-  background: transparent;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  text-decoration: none;
-  border: 1px solid transparent;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-  white-space: nowrap;
-}
-
-.nav-link:hover {
-  color: var(--yellow);
-  border-color: var(--border-y);
-  background: var(--yellow-ghost);
-}
-
-.nav-link.active {
-  color: var(--blue);
-  background: var(--yellow);
-  border-color: var(--yellow);
-}
-
-.lang-drop {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.lang-drop-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  color: var(--yellow);
-  border: 1px solid var(--border-y);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  cursor: pointer;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.lang-drop-btn:hover { border-color: var(--yellow); }
-
-.lang-drop-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--yellow);
-}
-
-.lang-drop-caret { transition: transform 0.2s; }
-.lang-drop.open .lang-drop-caret { transform: rotate(180deg); }
-
-.lang-drop-menu {
-  display: none;
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: #111;
-  border: 1px solid var(--border-y);
-  border-radius: var(--radius-sm);
-  list-style: none;
-  min-width: 130px;
-  z-index: 500;
-  overflow: hidden;
-}
-
-.lang-drop.open .lang-drop-menu { display: block; }
-
-.lang-drop-item {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--white);
-  padding: 8px 14px;
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s;
-}
-
-.lang-drop-item:hover { background: var(--yellow-ghost); color: var(--yellow); }
-.lang-drop-item.active { color: var(--yellow); }
-
-/* ============================================================
    TICKER — removed
    ============================================================ */
 .r-ticker { display: none; }
@@ -203,12 +74,7 @@ body {
    STAGE TRANSITION
    ============================================================ */
 .stage {
-  animation: stage-in 0.3s ease;
-}
-
-@keyframes stage-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  /* enter animation controlled by router via .page-enter / .page-enter-right / .page-enter-left */
 }
 
 /* ============================================================
@@ -394,6 +260,504 @@ body {
 .wiki-link-icon svg   { width: 10px; height: 10px; }
 
 /* ============================================================
+   RTL SUPPORT
+   ============================================================ */
+[dir="rtl"] .r-nav            { flex-direction: row-reverse; }
+[dir="rtl"] .hero-body        { direction: rtl; }
+
+/* ── Stage 1: Match cards ── */
+/* All flag→score→flag rows are symmetrical — force LTR layout, allow RTL text inside */
+
+/* Container-level LTR: grid/flex column ORDER is controlled by direction, not bidi */
+[dir="rtl"] .search-results    { direction: ltr; }
+[dir="rtl"] .search-result-item { direction: ltr; }
+[dir="rtl"] .sri-row           { direction: ltr; }
+[dir="rtl"] .mc-inner          { direction: ltr; }
+[dir="rtl"] .today-row         { direction: ltr; }
+[dir="rtl"] .featured-teams    { direction: ltr; }
+[dir="rtl"] .match-card        { direction: ltr; }
+
+/* Re-apply RTL to text-only elements inside these LTR containers */
+[dir="rtl"] .mc-name           { direction: rtl; unicode-bidi: isolate; text-align: right; }
+[dir="rtl"] .t-team            { direction: rtl; unicode-bidi: isolate; }
+[dir="rtl"] .s-home            { direction: rtl; unicode-bidi: isolate; }
+[dir="rtl"] .s-away            { direction: rtl; unicode-bidi: isolate; text-align: right; }
+
+/* Score/date strings: always LTR so "1–3" doesn't bidi-swap */
+[dir="rtl"] .mc-score,
+[dir="rtl"] .mc-vs,
+[dir="rtl"] .t-score,
+[dir="rtl"] .s-score,
+[dir="rtl"] .s-date,
+[dir="rtl"] .featured-score    { direction: ltr; unicode-bidi: isolate; }
+
+/* Search result status badge — align right */
+[dir="rtl"] .sri-status        { text-align: right; direction: rtl; }
+
+/* ── Stage 2: Insight layout ── */
+[dir="rtl"] .insight-layout   { direction: rtl; }
+
+/* ── Stage 4: Result page ── */
+/* Do NOT set direction:rtl on result-body — it cascades badly into grid children */
+[dir="rtl"] .result-left      { border-right: none; border-left: 1px solid var(--border); order: 2; padding: 24px 28px; }
+[dir="rtl"] .result-right     { border-left: none; border-right: 1px solid var(--border); order: 1; padding: 20px 16px; }
+/* result-match-display is symmetrical (flag · score · flag) — no RTL overrides needed */
+/* Force LTR on score so bidi doesn't swap "1–3" to "3–1" in RTL context */
+[dir="rtl"] .result-score-str  { direction: ltr; unicode-bidi: isolate; }
+[dir="rtl"] .result-match-meta { direction: ltr; unicode-bidi: isolate; }
+[dir="rtl"] .result-match-date { direction: ltr; unicode-bidi: isolate; }
+/* Team names: keep ltr rendering so "Cape Verde Islands" doesn't truncate on wrong side */
+[dir="rtl"] .result-team-name { direction: ltr; unicode-bidi: plaintext; text-align: center; }
+/* Pinned badge bar — column layout stays the same, just align text right */
+[dir="rtl"] .result-pinned-bar { text-align: right; }
+[dir="rtl"] .result-pinned-badge { flex-direction: row-reverse; }
+/* Header-right row (question badge + back button) — only reverse item order */
+[dir="rtl"] .result-header-right { flex-direction: row-reverse; }
+/* Answer text */
+[dir="rtl"] .answer-card-body-scroll { direction: rtl; text-align: right; }
+[dir="rtl"] .answer-card-head,
+[dir="rtl"] .answer-card-body { text-align: right; direction: rtl; }
+/* Right panel (entity sidebar) */
+[dir="rtl"] .entity-card-empty,
+[dir="rtl"] .result-right-hint { text-align: right; direction: rtl; }
+[dir="rtl"] .entity-stat { flex-direction: row-reverse; text-align: right; }
+
+/* ── Stage 2: Question tabs ── */
+[dir="rtl"] .q-tab-arrow      { transform: rotate(180deg) translateX(-4px); }
+
+/* ── Ticker ── */
+[dir="rtl"] .ticker-inner     { animation-direction: reverse; }
+/* Rooster track stays LTR — rooster always runs left to right */
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 1024px) {
+  .hero-body         { grid-template-columns: 1fr 300px 1fr; padding: 18px; }
+  .insight-layout    { grid-template-columns: 1fr 240px; }
+  .result-body       { grid-template-columns: 1fr 280px; }
+}
+
+@media (max-width: 860px) {
+  .hero-body {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+  .hero-col { max-height: none; }
+  .match-scroll-box, .upcoming-scroll-box { max-height: 300px; }
+
+  .insight-layout { grid-template-columns: 1fr; }
+  .mvp-panel { position: static; }
+
+  .result-body   { grid-template-columns: 1fr; }
+  .result-right  { border-left: none; border-top: 1px solid var(--border); position: static; height: auto; }
+  .result-left   { border-right: none; }
+
+  .r-nav { padding: 0 14px; }
+  .r-nav .logo-img { height: 34px; width: 152px; }
+  .nav-link { padding: 5px 10px; font-size: 9px; }
+}
+
+@media (max-width: 500px) {
+  .featured-score { font-size: 28px; }
+  .loading-question-text { font-size: 18px; }
+  .loading-pct { font-size: 22px; }
+  .rooster-track { max-width: 100%; }
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .stage, .entity-card, .qa-msg { animation: none; }
+  .ticker-inner { animation-play-state: paused; }
+  .sparkle { animation: none; opacity: 0.5; }
+}
+/* ── Search results scroll fade (added) ── */
+.search-results.has-fade::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: 48px;
+  background: linear-gradient(to top, #1a1a26 0%, transparent 100%);
+  pointer-events: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  transition: opacity 0.3s;
+  margin-top: -48px;
+}
+.search-results.has-fade.at-end::after { opacity: 0; }
+
+/* ── Q&A card "choose me" glow (added) ── */
+.q-tab.q-qa-inline {
+  border-color: rgba(245,230,66,0.35);
+  background: linear-gradient(135deg, rgba(245,230,66,0.07) 0%, var(--bg-card) 55%);
+  animation: qa-border-pulse 3s ease-in-out infinite;
+}
+
+@keyframes qa-border-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,230,66,0);    border-color: rgba(245,230,66,0.3); }
+  50%       { box-shadow: 0 0 18px 2px rgba(245,230,66,0.12); border-color: rgba(245,230,66,0.6); }
+}
+
+.q-tab.q-qa-inline:hover {
+  animation: none;
+  border-color: var(--yellow) !important;
+  box-shadow: 0 0 24px 4px rgba(245,230,66,0.15) !important;
+}
+
+.q-tab.q-qa-inline .q-tab-title {
+  color: var(--yellow);
+  font-size: 15px;
+}
+
+/* ── Q&A inline button — blue bg, yellow text ── */
+.q-inline-btn {
+  background: var(--blue) !important;
+  color: var(--yellow) !important;
+}
+.q-inline-btn:hover { background: var(--blue-dark) !important; }
+/* ── Result page fixes ── */
+
+/* Narrative card: fixed height with scroll */
+.answer-card-body-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Right panel: fixed sensible width, not stretching */
+.result-body {
+  grid-template-columns: 1fr 260px !important;
+}
+
+[dir="rtl"] .result-body {
+  grid-template-columns: 260px 1fr !important;
+}
+
+/* ── Q&A Info icon + tooltip ── */
+.qa-info-wrap {
+  position: relative;
+  overflow: visible;
+}
+.qa-info-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: rgba(13,13,21,0.85);
+  border: 1px solid rgba(245,230,66,0.35);
+  border-radius: 50%;
+  color: var(--yellow);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  padding: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  z-index: 20;
+  position: relative;
+}
+.qa-info-btn:hover,
+.qa-info-wrap:hover .qa-info-btn {
+  color: var(--yellow);
+  border-color: var(--yellow);
+  background: rgba(13,13,21,0.95);
+}
+
+.qa-info-tooltip {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 10px);
+  transform: translateY(-10px);
+  width: 240px;
+  background: #16161f;
+  border: 1px solid var(--border-y);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  z-index: 200;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+  pointer-events: none;
+  text-align: left;
+}
+
+.qa-info-wrap:hover .qa-info-tooltip,
+.qa-info-btn:focus + .qa-info-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.qa-info-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--yellow);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.qa-info-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.qa-info-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.qa-info-examples {
+  font-size: 11px;
+  color: rgba(255,255,255,0.75);
+  line-height: 1.6;
+  list-style: disc;
+  padding-left: 14px;
+  margin: 0;
+}
+.qa-info-examples li { margin-bottom: 2px; }
+
+.qa-info-examples.qa-info-wont {
+  color: rgba(239,68,68,0.8);
+}
+
+/* ============================================================
+   I18N — RTL, CJK overflow, and button/badge clamp additions
+   ============================================================ */
+
+/* ── RTL: tooltip flips from right-of-icon to left-of-icon ── */
+[dir="rtl"] .qa-info-tooltip {
+  left: auto;
+  right: calc(100% + 10px);
+  text-align: right;
+}
+
+/* ── RTL: question card text alignment ── */
+[dir="rtl"] .q-tab-title,
+[dir="rtl"] .q-tab-sub,
+[dir="rtl"] .q-inline-input,
+[dir="rtl"] .qa-info-title,
+[dir="rtl"] .qa-info-label,
+[dir="rtl"] .qa-info-examples {
+  text-align: right;
+  direction: rtl;
+}
+
+[dir="rtl"] .q-tab-header {
+  flex-direction: row-reverse;
+}
+
+/* ── RTL: pinned bar layout ── */
+/* pinned-bar / pb-left / pinned-match-info are symmetrical — no flip needed */
+
+/* ── RTL: result page (duplicates already handled in RTL SUPPORT block above) ── */
+
+/* ── Overflow guard: nav links ── */
+.nav-link {
+  font-size: clamp(8px, 1vw, 11px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+/* ── Overflow guard: q-tab-title ── */
+.q-tab-title {
+  font-size: clamp(11px, 1.4vw, 14px);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Overflow guard: analyze button ── */
+.q-inline-btn {
+  font-size: clamp(9px, 1.1vw, 11px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ── Overflow guard: q-blocked-badge ── */
+.q-blocked-badge {
+  font-size: clamp(8px, 0.9vw, 10px);
+  white-space: nowrap;
+}
+
+/* ── Overflow guard: answer card head (TL;DR / Full Narrative) ── */
+.answer-card-head {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: clamp(9px, 1vw, 11px);
+}
+
+/* ── CJK: prevent mid-character line breaks in badges/buttons ── */
+:lang(ja) .q-inline-btn,
+:lang(ko) .q-inline-btn,
+:lang(zh) .q-inline-btn {
+  word-break: keep-all;
+}
+
+:lang(ja) .q-tab-title,
+:lang(ko) .q-tab-title,
+:lang(zh) .q-tab-title {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+/* ── CJK: slightly smaller for compact glyphs in header ── */
+:lang(ja) .nav-link,
+:lang(ko) .nav-link,
+:lang(zh) .nav-link {
+  font-size: clamp(9px, 1.1vw, 12px);
+  letter-spacing: 0;
+}
+
+/* ============================================================
+/* ============================================================
+   NAV
+   ============================================================ */
+.r-nav {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  height: var(--nav-h);
+  background: #0d0d15;
+  border-bottom: 1px solid var(--border-y);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  gap: 16px;
+}
+
+.logo-wrap {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.logo-img {
+  height: 40px;
+  width: 178px;
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 0 10px rgba(245,230,66,0.25));
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.nav-link {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-bright);
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.nav-link:hover {
+  color: var(--yellow);
+  border-color: var(--border-y);
+  background: var(--yellow-ghost);
+}
+
+.nav-link.active {
+  color: var(--blue);
+  background: var(--yellow);
+  border-color: var(--yellow);
+}
+
+.lang-drop {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lang-drop-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--yellow);
+  border: 1px solid var(--border-y);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.lang-drop-btn:hover { border-color: var(--yellow); }
+
+.lang-drop-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--yellow);
+}
+
+.lang-drop-caret { transition: transform 0.2s; }
+.lang-drop.open .lang-drop-caret { transform: rotate(180deg); }
+
+.lang-drop-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #111;
+  border: 1px solid var(--border-y);
+  border-radius: var(--radius-sm);
+  list-style: none;
+  min-width: 130px;
+  z-index: 500;
+  overflow: hidden;
+}
+
+.lang-drop.open .lang-drop-menu { display: block; }
+
+.lang-drop-item {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--white);
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.lang-drop-item:hover { background: var(--yellow-ghost); color: var(--yellow); }
+.lang-drop-item.active { color: var(--yellow); }
+
+/* ============================================================
    STAGE 1 — HERO
    ============================================================ */
 .hero-body {
@@ -420,11 +784,11 @@ body {
 
 .search-wrap > svg {
   position: absolute;
-  left: 12px;
+  left: 13px;
   top: 50%;
   transform: translateY(-50%);
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
   color: var(--muted);
   pointer-events: none;
 }
@@ -436,16 +800,16 @@ body {
   border-radius: var(--radius-sm);
   color: var(--white);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 6px 14px 6px 34px;
+  padding: 10px 14px 10px 38px;
   outline: none;
   transition: border-color 0.15s, background 0.15s;
 }
 
-.search-wrap input::placeholder { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.search-wrap input::placeholder { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
 .search-wrap input:focus { border-color: var(--border-y); background: var(--yellow-ghost); }
 
 /* Search results dropdown */
@@ -491,7 +855,7 @@ body {
   border-left: 2px solid transparent;
 }
 .search-result-item:last-child { border-bottom: none; }
-.search-result-item:hover      { background: var(--yellow-ghost); border-left-color: var(--yellow); }
+.search-result-item:hover      { background: var(--yellow-ghost); border-left-color: var(--yellow); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s; }
 
 /* Main row: flag · home · score · away · flag · date */
 .sri-row {
@@ -591,14 +955,15 @@ body {
   flex-direction: column;
   gap: 10px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.12s;
+  transition: border-color 0.15s, background 0.12s, transform 0.15s, box-shadow 0.15s;
   position: relative;
 }
 
 .match-card:hover {
   border-color: var(--border-y);
   background: var(--bg-card-alt);
-  box-shadow: 0 0 0 1px rgba(245,230,66,0.1);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(245,230,66,0.12);
+  transform: translateY(-2px);
 }
 
 /* Row: [team-left] [center] [team-right] */
@@ -651,11 +1016,12 @@ body {
 
 .mc-score {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 700;
   color: var(--yellow);
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  text-shadow: 0 0 20px rgba(245,230,66,0.3);
 }
 
 .mc-score.mc-vs {
@@ -1638,9 +2004,9 @@ body {
 }
 
 .answer-card-body {
-  padding: 16px;
+  padding: 22px 20px;
   font-size: 14px;
-  line-height: 1.8;
+  line-height: 1.85;
   color: rgba(255,255,255,0.88);
 }
 
@@ -2131,374 +2497,6 @@ body {
 .tech-logo-name { font-size: 9px; color: var(--muted); text-align: center; }
 
 /* ============================================================
-   RTL SUPPORT
-   ============================================================ */
-[dir="rtl"] .r-nav            { flex-direction: row-reverse; }
-[dir="rtl"] .hero-body        { direction: rtl; }
-
-/* ── Stage 1: Match cards ── */
-/* All flag→score→flag rows are symmetrical — force LTR layout, allow RTL text inside */
-
-/* Container-level LTR: grid/flex column ORDER is controlled by direction, not bidi */
-[dir="rtl"] .search-results    { direction: ltr; }
-[dir="rtl"] .search-result-item { direction: ltr; }
-[dir="rtl"] .sri-row           { direction: ltr; }
-[dir="rtl"] .mc-inner          { direction: ltr; }
-[dir="rtl"] .today-row         { direction: ltr; }
-[dir="rtl"] .featured-teams    { direction: ltr; }
-[dir="rtl"] .match-card        { direction: ltr; }
-
-/* Re-apply RTL to text-only elements inside these LTR containers */
-[dir="rtl"] .mc-name           { direction: rtl; unicode-bidi: isolate; text-align: right; }
-[dir="rtl"] .t-team            { direction: rtl; unicode-bidi: isolate; }
-[dir="rtl"] .s-home            { direction: rtl; unicode-bidi: isolate; }
-[dir="rtl"] .s-away            { direction: rtl; unicode-bidi: isolate; text-align: right; }
-
-/* Score/date strings: always LTR so "1–3" doesn't bidi-swap */
-[dir="rtl"] .mc-score,
-[dir="rtl"] .mc-vs,
-[dir="rtl"] .t-score,
-[dir="rtl"] .s-score,
-[dir="rtl"] .s-date,
-[dir="rtl"] .featured-score    { direction: ltr; unicode-bidi: isolate; }
-
-/* Search result status badge — align right */
-[dir="rtl"] .sri-status        { text-align: right; direction: rtl; }
-
-/* ── Stage 2: Insight layout ── */
-[dir="rtl"] .insight-layout   { direction: rtl; }
-
-/* ── Stage 4: Result page ── */
-/* Do NOT set direction:rtl on result-body — it cascades badly into grid children */
-[dir="rtl"] .result-left      { border-right: none; border-left: 1px solid var(--border); order: 2; padding: 24px 28px; }
-[dir="rtl"] .result-right     { border-left: none; border-right: 1px solid var(--border); order: 1; padding: 20px 16px; }
-/* result-match-display is symmetrical (flag · score · flag) — no RTL overrides needed */
-/* Force LTR on score so bidi doesn't swap "1–3" to "3–1" in RTL context */
-[dir="rtl"] .result-score-str  { direction: ltr; unicode-bidi: isolate; }
-[dir="rtl"] .result-match-meta { direction: ltr; unicode-bidi: isolate; }
-[dir="rtl"] .result-match-date { direction: ltr; unicode-bidi: isolate; }
-/* Team names: keep ltr rendering so "Cape Verde Islands" doesn't truncate on wrong side */
-[dir="rtl"] .result-team-name { direction: ltr; unicode-bidi: plaintext; text-align: center; }
-/* Pinned badge bar — column layout stays the same, just align text right */
-[dir="rtl"] .result-pinned-bar { text-align: right; }
-[dir="rtl"] .result-pinned-badge { flex-direction: row-reverse; }
-/* Header-right row (question badge + back button) — only reverse item order */
-[dir="rtl"] .result-header-right { flex-direction: row-reverse; }
-/* Answer text */
-[dir="rtl"] .answer-card-body-scroll { direction: rtl; text-align: right; }
-[dir="rtl"] .answer-card-head,
-[dir="rtl"] .answer-card-body { text-align: right; direction: rtl; }
-/* Right panel (entity sidebar) */
-[dir="rtl"] .entity-card-empty,
-[dir="rtl"] .result-right-hint { text-align: right; direction: rtl; }
-[dir="rtl"] .entity-stat { flex-direction: row-reverse; text-align: right; }
-
-/* ── Stage 2: Question tabs ── */
-[dir="rtl"] .q-tab-arrow      { transform: rotate(180deg) translateX(-4px); }
-
-/* ── Ticker ── */
-[dir="rtl"] .ticker-inner     { animation-direction: reverse; }
-/* Rooster track stays LTR — rooster always runs left to right */
-
-/* ============================================================
-   RESPONSIVE
-   ============================================================ */
-@media (max-width: 1024px) {
-  .hero-body         { grid-template-columns: 1fr 300px 1fr; padding: 18px; }
-  .insight-layout    { grid-template-columns: 1fr 240px; }
-  .result-body       { grid-template-columns: 1fr 280px; }
-}
-
-@media (max-width: 860px) {
-  .hero-body {
-    grid-template-columns: 1fr;
-    padding: 14px;
-  }
-  .hero-col { max-height: none; }
-  .match-scroll-box, .upcoming-scroll-box { max-height: 300px; }
-
-  .insight-layout { grid-template-columns: 1fr; }
-  .mvp-panel { position: static; }
-
-  .result-body   { grid-template-columns: 1fr; }
-  .result-right  { border-left: none; border-top: 1px solid var(--border); position: static; height: auto; }
-  .result-left   { border-right: none; }
-
-  .r-nav { padding: 0 14px; }
-  .r-nav .logo-img { height: 34px; width: 152px; }
-  .nav-link { padding: 5px 10px; font-size: 9px; }
-}
-
-@media (max-width: 500px) {
-  .featured-score { font-size: 28px; }
-  .loading-question-text { font-size: 18px; }
-  .loading-pct { font-size: 22px; }
-  .rooster-track { max-width: 100%; }
-}
-
-/* ============================================================
-   REDUCED MOTION
-   ============================================================ */
-@media (prefers-reduced-motion: reduce) {
-  .stage, .entity-card, .qa-msg { animation: none; }
-  .ticker-inner { animation-play-state: paused; }
-  .sparkle { animation: none; opacity: 0.5; }
-}
-/* ── Search results scroll fade (added) ── */
-.search-results.has-fade::after {
-  content: '';
-  position: sticky;
-  bottom: 0;
-  display: block;
-  height: 48px;
-  background: linear-gradient(to top, #1a1a26 0%, transparent 100%);
-  pointer-events: none;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  transition: opacity 0.3s;
-  margin-top: -48px;
-}
-.search-results.has-fade.at-end::after { opacity: 0; }
-
-/* ── Q&A card "choose me" glow (added) ── */
-.q-tab.q-qa-inline {
-  border-color: rgba(245,230,66,0.35);
-  background: linear-gradient(135deg, rgba(245,230,66,0.07) 0%, var(--bg-card) 55%);
-  animation: qa-border-pulse 3s ease-in-out infinite;
-}
-
-@keyframes qa-border-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245,230,66,0);    border-color: rgba(245,230,66,0.3); }
-  50%       { box-shadow: 0 0 18px 2px rgba(245,230,66,0.12); border-color: rgba(245,230,66,0.6); }
-}
-
-.q-tab.q-qa-inline:hover {
-  animation: none;
-  border-color: var(--yellow) !important;
-  box-shadow: 0 0 24px 4px rgba(245,230,66,0.15) !important;
-}
-
-.q-tab.q-qa-inline .q-tab-title {
-  color: var(--yellow);
-  font-size: 15px;
-}
-
-/* ── Q&A inline button — blue bg, yellow text ── */
-.q-inline-btn {
-  background: var(--blue) !important;
-  color: var(--yellow) !important;
-}
-.q-inline-btn:hover { background: var(--blue-dark) !important; }
-/* ── Result page fixes ── */
-
-/* Narrative card: fixed height with scroll */
-.answer-card-body-scroll {
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-/* Right panel: fixed sensible width, not stretching */
-.result-body {
-  grid-template-columns: 1fr 260px !important;
-}
-
-[dir="rtl"] .result-body {
-  grid-template-columns: 260px 1fr !important;
-}
-
-/* ── Q&A Info icon + tooltip ── */
-.qa-info-wrap {
-  position: relative;
-  overflow: visible;
-}
-.qa-info-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: rgba(13,13,21,0.85);
-  border: 1px solid rgba(245,230,66,0.35);
-  border-radius: 50%;
-  color: var(--yellow);
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-  padding: 0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  font-weight: 700;
-  font-style: normal;
-  line-height: 1;
-  z-index: 20;
-  position: relative;
-}
-.qa-info-btn:hover,
-.qa-info-wrap:hover .qa-info-btn {
-  color: var(--yellow);
-  border-color: var(--yellow);
-  background: rgba(13,13,21,0.95);
-}
-
-.qa-info-tooltip {
-  display: none;
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 10px);
-  transform: translateY(-10px);
-  width: 240px;
-  background: #16161f;
-  border: 1px solid var(--border-y);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  z-index: 200;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.55);
-  pointer-events: none;
-  text-align: left;
-}
-
-.qa-info-wrap:hover .qa-info-tooltip,
-.qa-info-btn:focus + .qa-info-tooltip {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  pointer-events: auto;
-}
-
-.qa-info-title {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--yellow);
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
-.qa-info-section {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.qa-info-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.qa-info-examples {
-  font-size: 11px;
-  color: rgba(255,255,255,0.75);
-  line-height: 1.6;
-  list-style: disc;
-  padding-left: 14px;
-  margin: 0;
-}
-.qa-info-examples li { margin-bottom: 2px; }
-
-.qa-info-examples.qa-info-wont {
-  color: rgba(239,68,68,0.8);
-}
-
-/* ============================================================
-   I18N — RTL, CJK overflow, and button/badge clamp additions
-   ============================================================ */
-
-/* ── RTL: tooltip flips from right-of-icon to left-of-icon ── */
-[dir="rtl"] .qa-info-tooltip {
-  left: auto;
-  right: calc(100% + 10px);
-  text-align: right;
-}
-
-/* ── RTL: question card text alignment ── */
-[dir="rtl"] .q-tab-title,
-[dir="rtl"] .q-tab-sub,
-[dir="rtl"] .q-inline-input,
-[dir="rtl"] .qa-info-title,
-[dir="rtl"] .qa-info-label,
-[dir="rtl"] .qa-info-examples {
-  text-align: right;
-  direction: rtl;
-}
-
-[dir="rtl"] .q-tab-header {
-  flex-direction: row-reverse;
-}
-
-/* ── RTL: pinned bar layout ── */
-/* pinned-bar / pb-left / pinned-match-info are symmetrical — no flip needed */
-
-/* ── RTL: result page (duplicates already handled in RTL SUPPORT block above) ── */
-
-/* ── Overflow guard: nav links ── */
-.nav-link {
-  font-size: clamp(8px, 1vw, 11px);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100px;
-}
-
-/* ── Overflow guard: q-tab-title ── */
-.q-tab-title {
-  font-size: clamp(11px, 1.4vw, 14px);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-/* ── Overflow guard: analyze button ── */
-.q-inline-btn {
-  font-size: clamp(9px, 1.1vw, 11px);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-/* ── Overflow guard: q-blocked-badge ── */
-.q-blocked-badge {
-  font-size: clamp(8px, 0.9vw, 10px);
-  white-space: nowrap;
-}
-
-/* ── Overflow guard: answer card head (TL;DR / Full Narrative) ── */
-.answer-card-head {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: clamp(9px, 1vw, 11px);
-}
-
-/* ── CJK: prevent mid-character line breaks in badges/buttons ── */
-:lang(ja) .q-inline-btn,
-:lang(ko) .q-inline-btn,
-:lang(zh) .q-inline-btn {
-  word-break: keep-all;
-}
-
-:lang(ja) .q-tab-title,
-:lang(ko) .q-tab-title,
-:lang(zh) .q-tab-title {
-  word-break: normal;
-  overflow-wrap: anywhere;
-}
-
-/* ── CJK: slightly smaller for compact glyphs in header ── */
-:lang(ja) .nav-link,
-:lang(ko) .nav-link,
-:lang(zh) .nav-link {
-  font-size: clamp(9px, 1.1vw, 12px);
-  letter-spacing: 0;
-}
-
-/* ============================================================
    CALENDAR — icon, overlay, panels, grid, match rows
    ============================================================ */
 
@@ -2513,8 +2511,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  gap: 7px;
+  height: 42px;
+  padding: 0 14px;
   flex-shrink: 0;
   background: transparent;
   border: 1px solid var(--border);
@@ -2523,6 +2522,12 @@ body {
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
   outline: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 .cal-icon-btn:hover,
 .cal-icon-btn:focus-visible {
@@ -2751,8 +2756,8 @@ body {
   left: 28px;
   top: 50%;
   transform: translateY(-50%);
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   color: var(--muted);
   pointer-events: none;
 }
@@ -2763,19 +2768,19 @@ body {
   border-radius: var(--radius-sm);
   color: var(--white);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 6px 10px 6px 30px;
+  padding: 10px 10px 10px 34px;
   outline: none;
   transition: border-color 0.15s, background 0.15s;
 }
 .cal-search-wrap input::placeholder {
   color: var(--muted);
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 .cal-search-wrap input:focus {
   border-color: var(--border-y);
@@ -2933,3 +2938,77 @@ body {
   .cal-panel-left  { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
   .cal-panel-right { width: 100%; }
 }
+
+/* ============================================================
+   Page Transitions
+   ============================================================ */
+
+/* Base: all stage containers start visible */
+.stage { opacity: 1; transform: none; }
+
+/* Fade out — applied before clearing innerHTML */
+#app.page-exit {
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+/* Fade in — applied after new content renders */
+.page-enter {
+  animation: pageEnter 0.2s ease forwards;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Slide in from right (going forward: insight → result) */
+.page-enter-right {
+  animation: pageEnterRight 0.22s ease forwards;
+}
+@keyframes pageEnterRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Slide in from left (going back: result → insight) */
+.page-enter-left {
+  animation: pageEnterLeft 0.22s ease forwards;
+}
+@keyframes pageEnterLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+
+/* ── FIFA watermark ── */
+#wc-watermark {
+  position: fixed;
+  bottom: 0; left: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 800;
+  line-height: 0.88;
+  letter-spacing: -0.03em;
+  color: rgba(245, 230, 66, 0.07);
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  display: none;
+  padding: 0;
+  font-size: 0; /* suppress any accidental inline text */
+  direction: ltr; /* always LTR regardless of page dir */
+  unicode-bidi: bidi-override;
+}
+#wc-watermark::before {
+  content: '#2026 FIFA';
+  display: block;
+  font-size: clamp(56px, 8.5vw, 108px);
+}
+#wc-watermark::after {
+  content: 'WORLD CUP';
+  display: block;
+  font-size: clamp(56px, 8.5vw, 108px);
+}
+#wc-watermark.wm-visible { display: block; }

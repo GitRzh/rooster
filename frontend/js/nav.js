@@ -113,9 +113,49 @@ export function attachNavListeners(container, onNavigate) {
         langBtn.setAttribute('aria-expanded', 'false');
       });
     });
-    document.addEventListener('click', () => {
+    // Remove previous close-on-outside-click handler before adding a new one
+    // so it doesn't stack up across re-renders
+    if (attachNavListeners._docClickHandler) {
+      document.removeEventListener('click', attachNavListeners._docClickHandler);
+    }
+    attachNavListeners._docClickHandler = () => {
       langDrop.classList.remove('open');
       langBtn.setAttribute('aria-expanded', 'false');
-    });
+    };
+    document.addEventListener('click', attachNavListeners._docClickHandler);
   }
+}
+// ── Persistent nav helpers ────────────────────────────────────
+
+export function mountNav(onNavigate) {
+  const shell = document.getElementById('nav-shell');
+  if (!shell) return;
+  shell.innerHTML = buildNav('hero', onNavigate);
+  attachNavListeners(shell, onNavigate);
+
+  // Rebuild nav labels when language changes
+  if (!mountNav._langHandler) {
+    mountNav._langHandler = () => {
+      const active = document.querySelector('.nav-link.active')?.dataset.nav ?? 'hero';
+      shell.innerHTML = buildNav(active, onNavigate);
+      attachNavListeners(shell, onNavigate);
+    };
+    document.addEventListener('rooster:lang-change', mountNav._langHandler);
+  }
+}
+
+export function updateNavActive(stage) {
+  document.querySelectorAll('.nav-link[data-nav]').forEach(el => {
+    el.classList.toggle('active', el.dataset.nav === stage);
+  });
+}
+
+export function mountTicker(matches = []) {
+  const shell = document.getElementById('ticker-shell');
+  if (shell) shell.innerHTML = buildTicker(matches);
+}
+
+export function updateTicker(matches = []) {
+  const shell = document.getElementById('ticker-shell');
+  if (shell) shell.innerHTML = buildTicker(matches);
 }

@@ -7,7 +7,7 @@ import {
   extractPlayerNames, extractPlayerNamesFromBackend, highlightPlayersAsync, highlightPlayersDeduped,
   escapeHtml, getApiLang, API_BASE, t,
 } from './config.js';
-import { buildNav, buildTicker, attachNavListeners } from './nav.js';
+import { attachNavListeners } from './nav.js';
 
 function getQuestionLabel(qtype) {
   const map = {
@@ -36,8 +36,6 @@ export function renderResult(container, state, onNavigate) {
   const aFlag = flagUrl(match.away, 80);
 
   container.innerHTML = `
-    ${buildNav('insight', onNavigate)}
-    ${buildTicker([])}
     <div class="result-body stage">
 
       <!-- LEFT 65% -->
@@ -737,59 +735,123 @@ function capitalize(str) {
 // ── Used Tech page ────────────────────────────────────────────
 export function renderTech(container, state, onNavigate) {
   const TECH = [
-    { name: 'FastAPI',       desc: 'Python backend — all endpoints, routing, CORS' },
-    { name: 'Groq',          desc: 'LLM inference via llama-3.3-70b-versatile — ultra-fast analysis' },
-    { name: 'Docling',       desc: 'IBM-qualifying component — Wikipedia page parsing & context extraction' },
-    { name: 'football-data', desc: 'football-data.org API — live scores, fixtures, match data' },
-    { name: 'Vanilla JS',    desc: 'No framework — ES modules, no build step needed' },
-    { name: 'Wikipedia API', desc: 'Player photos, articles, and biographical validation' },
-    { name: 'flagcdn.com',   desc: 'Country flag images — PNG, no API key required' },
-    { name: 'IBM Plex',      desc: 'IBM Plex Sans + Mono — typography throughout' },
+    { name: 'FastAPI',       bullets: () => [t('tech_fastapi_b1'), t('tech_fastapi_b2'), t('tech_fastapi_b3')], color: '#009688', icon: 'img',  src: './assets/icon-fastapi.webp'      },
+    { name: 'Groq',          bullets: () => [t('tech_groq_b1'),   t('tech_groq_b2'),   t('tech_groq_b3')],   color: '#F55036', icon: 'img',  src: './assets/icon-groq.webp'         },
+    { name: 'Docling',       bullets: () => [t('tech_docling_b1'),t('tech_docling_b2'),t('tech_docling_b3')],color: '#FF832B', icon: 'img',  src: './assets/icon-docling.webp'      },
+    { name: 'football-data', bullets: () => [t('tech_fd_b1'),     t('tech_fd_b2'),     t('tech_fd_b3')],     color: '#7a9abf', icon: 'img',  src: './assets/icon-footballdata.webp' },
+    { name: 'Vanilla JS',    bullets: () => [t('tech_js_b1'),     t('tech_js_b2'),     t('tech_js_b3')],     color: '#C9B800', icon: 'img',  src: './assets/icon-js.webp'           },
+    { name: 'Wikipedia API', bullets: () => [t('tech_wiki_b1'),   t('tech_wiki_b2'),   t('tech_wiki_b3')],   color: '#a0a0a0', icon: 'img',  src: './assets/icon-wikipedia.webp'    },
+    { name: 'flagcdn.com',   bullets: () => [t('tech_flag_b1'),   t('tech_flag_b2'),   t('tech_flag_b3')],   color: '#7a9abf', icon: 'img',  src: './assets/icon-flagcdn.webp'      },
+    { name: 'IBM Plex',      bullets: () => [t('tech_plex_b1'),   t('tech_plex_b2')],                        color: '#4589FF', icon: 'text', text: 'Rr'                             },
   ];
 
   container.innerHTML = `
-    ${buildNav('tech', onNavigate)}
-    ${buildTicker([])}
     <div class="tech-body stage">
-      <div>
-        <div class="tech-title">What powers ROOSTER</div>
-        <ul class="tech-list">
-          ${TECH.map(t => `
-            <li>
-              <span class="tech-arrow">→</span>
-              <span><strong class="tech-name">${t.name}</strong> — ${t.desc}</span>
-            </li>
-          `).join('')}
-        </ul>
-      </div>
-      <div>
-        <div class="tech-title">Stack at a glance</div>
-        <div class="tech-logos">
-          ${TECH.map(t => `
-            <div class="tech-logo-item">
-              <div class="tech-logo-box">${t.name.toUpperCase()}</div>
-              <div class="tech-logo-name">${t.name}</div>
+
+      <div class="tech-grid">
+        ${TECH.map(tech => `
+          <div class="tc-card" style="--accent:${tech.color};">
+            <div class="tc-icon-wrap">
+              <div class="tc-icon">
+                ${tech.icon === 'img'
+                  ? `<img src="${tech.src}" alt="${tech.name}" class="tc-img">`
+                  : `<span class="tc-letters" style="color:${tech.color};">${tech.text}</span>`
+                }
+              </div>
+              <div class="tc-name">${tech.name}</div>
             </div>
-          `).join('')}
-        </div>
+            <ul class="tc-bullets">
+              ${tech.bullets().map(pt => `<li>${pt}</li>`).join('')}
+            </ul>
+          </div>
+        `).join('')}
       </div>
+
     </div>
+
+    <style>
+      .tech-body {
+        padding: 48px 40px;
+        max-width: 1140px;
+        margin: 0 auto;
+        position: relative;
+        min-height: 80vh;
+      }
+      .tech-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        grid-auto-rows: 1fr;
+        gap: 20px;
+      }
+      .tc-card {
+        background: color-mix(in srgb, var(--accent) 6%, #0f0f0f);
+        border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+        border-radius: 0;
+        padding: 20px 18px;
+        transition: background 0.15s, border-color 0.15s;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .tc-card:hover {
+        background: color-mix(in srgb, var(--accent) 10%, #0f0f0f);
+        border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+      }
+      .tc-icon-wrap {
+        display: flex; align-items: center; gap: 10px;
+      }
+      .tc-icon {
+        width: 32px; height: 32px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .tc-img { width: 28px; height: 28px; object-fit: contain; }
+      .tc-letters {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 13px; font-weight: 700;
+        width: 28px; height: 28px;
+        display: flex; align-items: center; justify-content: center;
+        border: 1px solid currentColor;
+        opacity: 0.85;
+      }
+      .tc-name {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 13px; font-weight: 700;
+        letter-spacing: 0.04em;
+        color: color-mix(in srgb, var(--accent) 85%, #fff);
+      }
+      .tc-bullets {
+        list-style: none; margin: 0; padding: 0;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      .tc-bullets li {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 12px; color: rgba(255,255,255,0.42);
+        line-height: 1.4; padding-left: 14px; position: relative;
+      }
+      [dir="rtl"] .tc-bullets li {
+        padding-left: 0; padding-right: 14px;
+      }
+      .tc-bullets li::before {
+        content: '·';
+        position: absolute; left: 0;
+        color: var(--accent); opacity: 0.5;
+        font-size: 16px; line-height: 1;
+      }
+      [dir="rtl"] .tc-bullets li::before {
+        left: auto; right: 0;
+      }
+      .tc-footer {
+        margin-top: 32px;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: rgba(255,255,255,0.22);
+        letter-spacing: 0.04em;
+      }
+      .tc-footer-author {
+        color: rgba(255,255,255,0.38);
+      }
+    </style>
   `;
 
   attachNavListeners(container, onNavigate);
-}
-
-// ── Card helpers ──────────────────────────────────────────────
-function errorCard(msg) {
-  return `<div class="answer-card answer-card-error">
-    <div class="answer-card-head">Error</div>
-    <div class="answer-card-body">${msg}</div>
-  </div>`;
-}
-
-function infoCard(head, body) {
-  return `<div class="answer-card">
-    <div class="answer-card-head">${head}</div>
-    <div class="answer-card-body">${body}</div>
-  </div>`;
 }

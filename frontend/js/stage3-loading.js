@@ -3,8 +3,7 @@
 // ============================================================
 
 import { API_BASE, getApiLang, t } from './config.js';
-import { buildNav, buildTicker } from './nav.js';
-import { attachNavListeners }    from './nav.js';
+import { attachNavListeners } from './nav.js';
 
 function getLoadingLabels() {
   return {
@@ -35,8 +34,6 @@ export async function renderLoading(container, state, onNavigate) {
 
   // ── Standard analysis (all question types, including custom) ──
   container.innerHTML = `
-    ${buildNav('insight', onNavigate)}
-    ${buildTicker([])}
     <div class="loading-body stage" id="loading-stage">
 
       <div class="loading-question-wrap">

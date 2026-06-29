@@ -3,7 +3,7 @@
 // ============================================================
 
 import { API_BASE, flagImg, flagUrl, t } from './config.js';
-import { buildNav, buildTicker, attachNavListeners } from './nav.js';
+import { attachNavListeners, updateTicker } from './nav.js';
 
 let heroData         = null;
 let pinnedMatch      = null;
@@ -18,8 +18,6 @@ export function renderHero(container, state, onNavigate) {
   pinnedMatch = state.pinnedMatch || null;
 
   container.innerHTML = `
-    ${buildNav('hero', onNavigate)}
-    <div id="hero-ticker">${buildTicker([])}</div>
     <div class="hero-body stage">
 
       <!-- Search — full width -->
@@ -28,16 +26,17 @@ export function renderHero(container, state, onNavigate) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" id="search-input" placeholder="${t('search_placeholder')}" autocomplete="off" aria-label="Search matches">
+          <input type="text" id="search-input" placeholder="Search match using team name" autocomplete="off" aria-label="Search matches">
           <div class="search-results hidden" id="search-results" role="listbox"></div>
         </div>
-        <button class="cal-icon-btn" id="cal-icon-btn" aria-label="Open match calendar" title="Match Calendar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true">
+        <button class="cal-icon-btn" id="cal-icon-btn" aria-label="Open match calendar" title="Search match using dates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
             <line x1="16" y1="2" x2="16" y2="6"/>
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
+          <span>Search by date</span>
         </button>
       </div>
       <!-- Calendar overlay -->
@@ -129,12 +128,16 @@ export function renderHero(container, state, onNavigate) {
 // ── Data load ─────────────────────────────────────────────────
 async function loadHero(container, state, onNavigate) {
   try {
-    const res = await fetch(`${API_BASE}/hero`);
-    heroData   = await res.json();
+    // Use the promise started during the intro (window.__heroPromise) if
+    // available — it's been running in parallel for ~2.5s already.
+    // Falls back to a fresh fetch if called outside the normal boot flow.
+    heroData = window.__heroPromise
+      ? await window.__heroPromise
+      : await fetch(`${API_BASE}/hero`).then(r => r.json());
+    window.__heroPromise = null; // consume once
 
     const liveMatches = heroData.live || [];
-    const tickerEl    = container.querySelector('#hero-ticker');
-    if (tickerEl) tickerEl.innerHTML = buildTicker(liveMatches);
+    updateTicker(liveMatches);
 
     // Finished = yesterday + two_days_ago, newest first, deduplicated by ID
     const finishedRaw = [...(heroData.yesterday || []), ...(heroData.two_days_ago || [])];
