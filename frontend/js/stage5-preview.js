@@ -48,7 +48,7 @@ async function renderPreviewContent(container, state, onNavigate) {
               <circle cx="12" cy="12" r="10"/>
               <polyline points="12 6 12 12 16 14"/>
             </svg>
-            UPCOMING
+            ${t('pv_upcoming')}
           </div>
           <div class="result-match-display">
             <div class="result-team-block">
@@ -72,12 +72,12 @@ async function renderPreviewContent(container, state, onNavigate) {
             </div>
           </div>
           <div class="result-header-right">
-            <span class="result-q-badge">Preview</span>
+            <span class="result-q-badge">${t('pv_preview')}</span>
             <button class="btn-back" id="pv-back-btn" aria-label="Back">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11" aria-hidden="true">
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
-              Change Match
+              ${t('pv_change_match')}
             </button>
           </div>
         </div>
@@ -108,7 +108,7 @@ async function renderPreviewContent(container, state, onNavigate) {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11" aria-hidden="true">
                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                   </svg>
-                  Tactical Contrast
+                  ${t('pv_tactical_contrast')}
                 </div>
                 <div class="pv-section-body">${escapeHtml(result.tactical_contrast)}</div>
               </div>
@@ -121,7 +121,7 @@ async function renderPreviewContent(container, state, onNavigate) {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11" aria-hidden="true">
                     <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" fill="currentColor"/>
                   </svg>
-                  Why This Match Is Unmissable
+                  ${t('pv_why_unmissable')}
                 </div>
                 <div class="pv-section-body pv-story-body">${escapeHtml(result.unmissable_storyline)}</div>
               </div>
@@ -139,7 +139,7 @@ async function renderPreviewContent(container, state, onNavigate) {
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
             <circle cx="12" cy="12" r="3"/>
           </svg>
-          Watch
+          ${t('pv_watch')}
         </div>
 
         <div class="pv-entity-scroll-wrap" id="pv-scroll-wrap">
@@ -762,19 +762,19 @@ function buildTeamColumn(teamName, flagSrc, teamData, side) {
       </div>
       ${teamData.style ? `
         <div class="pv-team-row">
-          <span class="pv-row-label">Style</span>
+          <span class="pv-row-label">${t('pv_style')}</span>
           <span class="pv-row-val">${escapeHtml(teamData.style)}</span>
         </div>
       ` : ''}
       ${teamData.danger ? `
         <div class="pv-team-row">
-          <span class="pv-row-label">Danger</span>
+          <span class="pv-row-label">${t('pv_danger')}</span>
           <span class="pv-row-val danger">${escapeHtml(teamData.danger)}</span>
         </div>
       ` : ''}
       ${teamData.weakness ? `
         <div class="pv-team-row">
-          <span class="pv-row-label">Vulnerability</span>
+          <span class="pv-row-label">${t('pv_vulnerability')}</span>
           <span class="pv-row-val weakness">${escapeHtml(teamData.weakness)}</span>
         </div>
       ` : ''}
@@ -805,8 +805,8 @@ function buildH2H(result) {
         <line x1="12" y1="8" x2="12" y2="12"/>
         <line x1="12" y1="16" x2="12.01" y2="16"/>
       </svg>
-      <span class="pv-h2h-text">First ever World Cup meeting — history starts here.</span>
-      <span class="pv-h2h-badge">First Meeting</span>
+      <span class="pv-h2h-text">${t('pv_first_meeting_text')}</span>
+      <span class="pv-h2h-badge">${t('pv_first_meeting_badge')}</span>
     </div>
   `;
 }
@@ -899,7 +899,11 @@ async function fillCard(cardEl, p, match) {
   const initials = p.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const color    = nameColor(p.name);
   const isManager = p.role && /manager|coach/i.test(p.role);
-  const teamLabel = p.team === 'home' ? match.home : match.away;
+  // p.team is now the literal team name (e.g. "Norway"), not an abstract 'home'/'away' label —
+  // match it case-insensitively against the real match teams, with a safe fallback to whichever
+  // side it most resembles so a stray casing/whitespace difference from the model never breaks display.
+  const normalize = s => (s || '').trim().toLowerCase();
+  const teamLabel = normalize(p.team) === normalize(match.away) ? match.away : match.home;
   const wikiUrl  = wikiData?.url || `https://en.wikipedia.org/wiki/${encodeURIComponent(p.name.replace(/ /g, '_'))}`;
 
   const photoHtml = wikiData?.thumbnail
@@ -916,7 +920,7 @@ async function fillCard(cardEl, p, match) {
           <a href="${wikiUrl}" target="_blank" rel="noopener">${escapeHtml(p.name)}<svg style="display:inline-block;vertical-align:middle;margin-left:4px;flex-shrink:0;opacity:0.5;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
         </div>
         <div class="pv-entity-badges">
-          <span class="${isManager ? 'manager-badge' : 'player-badge'}">${isManager ? 'Manager' : (p.role || 'Player')}</span>
+          <span class="${isManager ? 'manager-badge' : 'player-badge'}">${isManager ? t('pv_manager') : (p.role || t('pv_player'))}</span>
           <span class="pv-entity-team">${escapeHtml(teamLabel)}</span>
         </div>
       </div>

@@ -21,6 +21,7 @@ from analyzer import analyze
 from groq_client import extract_names, extract_entity_info
 import asyncio
 import logging
+import threading
 import cache
 from org_client import get_live, get_today, get_upcoming, get_yesterday, get_two_days_ago, get_calendar
 
@@ -32,6 +33,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── Per-key in-flight locks ───────────────────────────────────
+# Guards against multiple concurrent requests (different tabs, page reloads,
+# or a stray frontend double-fire) for the SAME match each independently
+# kicking off their own 5-call Groq retry chain. The frontend's loadingInFlight
+# guard only protects a single tab's in-memory state and resets on reload, so
+# it can't prevent this case — this is the actual backend-side fix for that.
+# Threading locks (not asyncio.Lock) because these endpoints are sync `def`
+# functions, which FastAPI runs in a worker threadpool, not the event loop.
+_inflight_locks = {}
+_inflight_locks_guard = threading.Lock()
+
+def _lock_for(key: str) -> threading.Lock:
+    with _inflight_locks_guard:
+        lock = _inflight_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _inflight_locks[key] = lock
+        return lock
 
 
 class AnalyzeRequest(BaseModel):
@@ -138,14 +158,30 @@ def search(q: str = Query("", min_length=1)):
 @app.post("/analyze")
 def analyze_match(req: AnalyzeRequest):
     try:
-        # Cache key: custom questions are NOT cached (unique per user)
-        # Standard questions cached per fixture+type+language for 6hrs
-        cache_key = None
-        if req.question_type != "custom":
+        # Cache key: standard questions cache per fixture+type+language for 6hrs.
+        # Custom questions ALSO cache now, keyed by a hash of the question text —
+        # analyzer.py already dedupes the underlying ENGLISH generation this way,
+        # but without this outer cache, every repeat of the same custom question
+        # (e.g. re-testing the same QA prompt, or two users asking the same thing)
+        # was re-running the TRANSLATION step from scratch even when nothing about
+        # the answer changed. This caches the full (possibly translated) response,
+        # not just the English source — that's the step that was actually wasting
+        # Groq tokens on repeats.
+        import hashlib
+        if req.question_type == "custom":
+            qhash = hashlib.md5((req.custom_question or "").strip().lower().encode()).hexdigest()[:16]
+            cache_key = f"analysis:{req.fixture_id}:custom:{qhash}:{req.language}"
+        else:
             cache_key = f"analysis:{req.fixture_id}:{req.question_type}:{req.language}"
-            cached = cache.get(cache_key)
-            if cached is not None:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            cached_ok = (cached.get("answer") or "").strip() or cached.get("draw_blocked") or cached.get("too_soon")
+            if cached_ok:
                 return cached
+            # Bad/empty cached entry from before this guard existed — drop it and regenerate.
+            logging.warning(f"[ANALYZE STALE EMPTY CACHE] invalidating {cache_key}")
+            with cache._lock:
+                cache._cache.pop(cache_key, None)
 
         match = {
             "id":         req.fixture_id,
@@ -161,6 +197,14 @@ def analyze_match(req: AnalyzeRequest):
         }
         result = analyze(match, req.question_type, req.language, req.custom_question)
 
+        # An empty/missing answer is never a valid result to cache or return —
+        # without this guard, a single bad generation (e.g. a transient Groq
+        # failure) gets cached for 6hrs and silently served as "no analysis"
+        # for that fixture+language for everyone until the TTL expires.
+        if not (result.get("answer") or "").strip() and not result.get("draw_blocked") and not result.get("too_soon"):
+            logging.error(f"[ANALYZE EMPTY ANSWER] fixture={req.fixture_id} type={req.question_type} lang={req.language}")
+            raise HTTPException(status_code=502, detail="Analysis generation returned empty. Try again.")
+
         if cache_key and not result.get("too_soon") and not result.get("error"):
             cache.set(cache_key, result)
 
@@ -175,91 +219,132 @@ def analyze_match(req: AnalyzeRequest):
 @app.post("/preview")
 def preview_match(req: PreviewRequest):
     """Generate a pre-match narrative briefing from team names only.
-    No Docling, no match data — pure LLM from football knowledge."""
+    No Docling, no match data — pure LLM from football knowledge.
+
+    Split into two Groq calls (analysis block + players block) instead of one big JSON blob.
+    This is far more reliable for non-English/non-Latin-script languages (Korean, Japanese,
+    Chinese, Arabic) — those scripts use more tokens per character, so a single large response
+    has more chances to truncate mid-object or drift out of valid JSON. Two smaller calls each
+    have an easier job, and a failure in one doesn't take the other down with it. The merged
+    output keeps the exact same shape the frontend already expects, so no frontend changes
+    are needed."""
     try:
         import json
-        from prompts import preview_match as build_preview_prompt
-        from groq_client import _call, _call_preview, MODEL
-        from prompts import SYSTEM_PROMPT
+        from prompts import preview_match_analysis, preview_match_players, SYSTEM_PROMPT
+        from groq_client import _call_preview, preview_token_budget
 
-        cache_key = f"preview:{req.home}:{req.away}:{req.language}"
+        def _parse(raw: str):
+            cleaned = raw.strip()
+            if "```" in cleaned:
+                parts = cleaned.split("```")
+                cleaned = parts[1] if len(parts) >= 2 else cleaned
+                lines = cleaned.splitlines()
+                if lines and lines[0].strip().lower() in ("json", ""):
+                    cleaned = "\n".join(lines[1:])
+                cleaned = cleaned.strip()
+            try:
+                return json.loads(cleaned)
+            except Exception:
+                start, end = raw.find("{"), raw.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    return json.loads(raw[start:end + 1])
+                raise
+
+        def _is_valid_analysis(r):
+            th = r.get("team_home") or {}
+            ta = r.get("team_away") or {}
+            teams_ok    = bool(th.get("style") or th.get("danger")) and bool(ta.get("style") or ta.get("danger"))
+            headline_ok = bool((r.get("headline") or "").strip())
+            tactical_ok = bool((r.get("tactical_contrast") or "").strip())
+            story_ok    = bool((r.get("unmissable_storyline") or "").strip())
+            return teams_ok and headline_ok and tactical_ok and story_ok
+
+        def _is_valid_players(r):
+            players = r.get("players_to_watch") or []
+            return len(players) >= 2 and all((p.get("name") or "").strip() for p in players)
+
+        def _is_full_result_valid(r):
+            return _is_valid_analysis(r) and _is_valid_players(r)
+
+        cache_key_en = f"preview:{req.home}:{req.away}:English"
+        cache_key    = f"preview:{req.home}:{req.away}:{req.language}"
+
         cached = cache.get(cache_key)
         if cached is not None:
-            # Invalidate stale cached results with empty team fields
-            th = (cached.get("team_home") or {})
-            ta = (cached.get("team_away") or {})
-            if th.get("style") or th.get("danger") or ta.get("style") or ta.get("danger"):
+            if _is_full_result_valid(cached):
                 return cached
-            # Empty fields — delete stale cache entry and re-fetch
             logging.warning(f"[PREVIEW STALE CACHE] invalidating {cache_key}")
             with cache._lock:
                 cache._cache.pop(cache_key, None)
 
-        prompt = build_preview_prompt(req.home, req.away, req.stage, req.date, req.language)
+        # Lock on the ENGLISH key — every language for this match shares the same
+        # underlying English generation, so requests for different languages on
+        # the same match also serialize on that shared step instead of each
+        # independently hammering Groq.
+        lock = _lock_for(cache_key_en)
+        with lock:
+            # Double-checked: someone else may have just populated our key while we waited.
+            cached = cache.get(cache_key)
+            if cached is not None and _is_full_result_valid(cached):
+                return cached
 
-        raw = _call_preview(SYSTEM_PROMPT, prompt)
+            def _run(call_name: str, build_prompt_fn, is_valid_fn, max_attempts: int):
+                """Run a single preview sub-call (ALWAYS in English) with its own retry
+                loop. Returns the best candidate it got, even if it never passed
+                validation — caller decides what to do with that."""
+                prompt = build_prompt_fn(req.home, req.away, req.stage, req.date, "English")
+                tokens = preview_token_budget(call_name, "English")
+                best = None
+                for attempt in range(1, max_attempts + 1):
+                    raw = _call_preview(SYSTEM_PROMPT, prompt, tokens)
+                    try:
+                        candidate = _parse(raw)
+                    except Exception:
+                        logging.error(f"[PREVIEW {call_name.upper()} PARSE FAIL attempt {attempt}] raw={raw[:300]}")
+                        continue
+                    best = candidate
+                    if is_valid_fn(candidate):
+                        return candidate, True
+                    logging.warning(
+                        f"[PREVIEW {call_name.upper()} INCOMPLETE attempt {attempt}] "
+                        f"{req.home} vs {req.away} (English) raw_tail={raw[-150:]!r}"
+                    )
+                return best, False
 
+            english = cache.get(cache_key_en)
+            if english is None or not _is_full_result_valid(english):
+                analysis, analysis_ok = _run("analysis", preview_match_analysis, _is_valid_analysis, max_attempts=3)
+                players,  players_ok  = _run("players",  preview_match_players,  _is_valid_players,  max_attempts=2)
 
-        # Robust JSON extraction — handle all fence variants
-        cleaned = raw.strip()
-        # Remove any ``` fences (```json, ```JSON, ``` alone)
-        if "```" in cleaned:
-            parts = cleaned.split("```")
-            # parts[1] is the content inside the first fence pair
-            if len(parts) >= 3:
-                cleaned = parts[1]
-            elif len(parts) == 2:
-                cleaned = parts[1]
-            # Strip language identifier on first line (json, JSON, etc.)
-            lines = cleaned.splitlines()
-            if lines and lines[0].strip().lower() in ("json", ""):
-                cleaned = "\n".join(lines[1:])
-            cleaned = cleaned.strip()
-
-        # Last resort: find the outermost { } if still not valid
-        try:
-            result = json.loads(cleaned)
-        except Exception:
-            # Try extracting first { ... } block from raw
-            start = raw.find("{")
-            end   = raw.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    result = json.loads(raw[start:end+1])
-                except Exception:
-                    logging.error(f"[PREVIEW PARSE FAIL] raw={raw[:500]}")
+                # Analysis is the core of the page — if it never came back usable, the whole preview fails.
+                if analysis is None:
                     return {"error": True, "headline": "Preview generation failed. Try again."}
-            else:
-                logging.error(f"[PREVIEW NO JSON] raw={raw[:500]}")
+
+                english = dict(analysis)
+
+                # Graceful degradation on players: use whatever named entries we got rather than
+                # discarding the entire preview because the watch list came back short or empty.
+                if players:
+                    named = [p for p in (players.get("players_to_watch") or []) if (p.get("name") or "").strip()]
+                    english["players_to_watch"] = named
+                else:
+                    english["players_to_watch"] = []
+
+                if analysis_ok:
+                    cache.set(cache_key_en, english)
+
+            if english is None:
                 return {"error": True, "headline": "Preview generation failed. Try again."}
 
-        # Validate key fields non-empty before caching; retry once if blank
-        def _is_valid(r):
-            th = r.get("team_home") or {}
-            ta = r.get("team_away") or {}
-            return bool(th.get("style") or th.get("danger")) and bool(ta.get("style") or ta.get("danger"))
+            if req.language == "English":
+                result = english
+            else:
+                from groq_client import translate_preview
+                result = translate_preview(english, req.language)
 
-        if not _is_valid(result):
-            logging.warning(f"[PREVIEW EMPTY FIELDS] retrying {req.home} vs {req.away}")
-            raw2 = _call_preview(SYSTEM_PROMPT, prompt)
-            c2 = raw2.strip()
-            if "```" in c2:
-                p2 = c2.split("```")
-                c2 = p2[1] if len(p2) >= 2 else c2
-                l2 = c2.splitlines()
-                if l2 and l2[0].strip().lower() in ("json", ""):
-                    c2 = "\n".join(l2[1:])
-                c2 = c2.strip()
-            try:
-                r2 = json.loads(c2)
-            except Exception:
-                s2, e2 = raw2.find("{"), raw2.rfind("}")
-                r2 = json.loads(raw2[s2:e2+1]) if s2 != -1 and e2 > s2 else result
-            if _is_valid(r2):
-                result = r2
-
-        cache.set(cache_key, result)
-        return result
+            if _is_full_result_valid(result):
+                cache.set(cache_key, result)
+            return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

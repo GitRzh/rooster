@@ -4,14 +4,100 @@ Builds match context using Docling (Wikipedia),
 then runs a single Groq call in the target language.
 """
 
+import hashlib
+import re
 from datetime import datetime, timezone, timedelta
 from prompts import SYSTEM_PROMPT, QUESTION_MAP, DRAW_ALLOWED, RTL_LANGUAGES, custom_question_prompt
-from groq_client import complete, is_football_question
+from groq_client import complete, translate, extract_names, is_football_question, NON_LATIN_LANGS
 from docling_client import get_match_context
 from org_client import get_coaches
+import cache
 
 # Minimum hours after match end before Wikipedia is reliable enough
 WIKI_MIN_DELAY_HOURS = 1
+
+
+def _split_tldr_narrative(text: str) -> tuple[str, str] | None:
+    """Split an English 'TLDR: ... NARRATIVE: ...' answer into its two bodies.
+    Returns None if the expected structure isn't present (e.g. draw-blocked /
+    too-soon messages, or a generation that didn't follow the format), in
+    which case the caller should fall back to translating the whole text."""
+    m = re.search(r"TLDR[:\s-]*([\s\S]*?)NARRATIVE[:\s-]*([\s\S]*)$", text, re.IGNORECASE)
+    if not m:
+        return None
+    tldr = m.group(1).strip()
+    narr = m.group(2).strip()
+    if not tldr or not narr:
+        return None
+    return tldr, narr
+
+
+def _translated_answer(english_answer: str, language: str, known_names: list[str] | None) -> str:
+    """Translate an English TLDR/NARRATIVE answer into another language.
+
+    Relying on the LLM to selectively leave the 'TLDR:'/'NARRATIVE:' labels
+    untranslated inside text it's otherwise told to translate proved
+    unreliable in practice (it would translate them, or transliterate them
+    phonetically) — the frontend's parser only matches the literal English
+    words, so any drift breaks the TL;DR/Full Narrative split.
+
+    Instead: split into the two bodies in Python (deterministic, since the
+    source is always English), translate each body on its own with no labels
+    in the prompt at all, and reassemble with the literal English labels
+    added back by this code — never by the model. Falls back to translating
+    the whole text if the structure isn't present (e.g. draw/too-soon
+    messages, which have no TLDR/NARRATIVE structure to begin with)."""
+    split = _split_tldr_narrative(english_answer)
+    if split is None:
+        return translate(english_answer, language, known_names)
+
+    tldr_en, narr_en = split
+    tldr_t = translate(tldr_en, language, known_names)
+    narr_t = translate(narr_en, language, known_names)
+    if not (tldr_t or "").strip():
+        tldr_t = tldr_en
+    if not (narr_t or "").strip():
+        narr_t = narr_en
+    return f"TLDR: {tldr_t}\n\nNARRATIVE: {narr_t}"
+
+
+def _english_answer(match: dict, question_type: str, custom_question: str | None, user_prompt: str) -> str:
+    """Get the canonical ENGLISH answer for this question, from cache if present,
+    otherwise generate it once and cache it. Every other language is a translation
+    of THIS exact text — never an independent generation — so all languages stay
+    factually consistent with each other.
+
+    Custom questions are keyed by a hash of the question text (lowercased/trimmed)
+    so identical questions reuse the same English source across users/languages,
+    same as the standard question types."""
+    if question_type == "custom":
+        qhash = hashlib.md5((custom_question or "").strip().lower().encode()).hexdigest()[:16]
+        english_key = f"analysis_en_src:{match['id']}:custom:{qhash}"
+    else:
+        english_key = f"analysis_en_src:{match['id']}:{question_type}"
+
+    english_answer = cache.get(english_key)
+    if not isinstance(english_answer, str) or not english_answer.strip():
+        english_answer = complete(SYSTEM_PROMPT, user_prompt, "English")
+        cache.set(english_key, english_answer)
+
+    return english_answer
+
+
+def _known_names_for(english_answer: str) -> list[str]:
+    """Player/manager names extracted from the ENGLISH source, used to force
+    correct Latin-script preservation when translating into non-Latin scripts.
+    Cached under the same 'names:{hash}' key scheme as the /extract-names
+    endpoint in main.py, so this never costs more than one extra Groq call
+    per unique English answer."""
+    text_hash = hashlib.md5(english_answer.encode()).hexdigest()[:16]
+    cache_key = f"names:{text_hash}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    names = extract_names(english_answer)
+    cache.set(cache_key, names)
+    return names
 
 
 def analyze(match: dict, question_type: str, language: str = "English", custom_question: str | None = None) -> dict:
@@ -102,7 +188,14 @@ def analyze(match: dict, question_type: str, language: str = "English", custom_q
         prompt_fn   = QUESTION_MAP[question_type]
         user_prompt = prompt_fn(match)
 
-    answer = complete(SYSTEM_PROMPT, user_prompt, language)
+    english_answer = _english_answer(match, question_type, custom_question, user_prompt)
+    if language == "English":
+        answer = english_answer
+    else:
+        known_names = _known_names_for(english_answer) if language in NON_LATIN_LANGS else None
+        answer = _translated_answer(english_answer, language, known_names)
+        if not (answer or "").strip():
+            answer = english_answer
 
     return {
         "answer":        answer,

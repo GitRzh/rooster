@@ -15,6 +15,11 @@ import { LANGUAGES, getCurrentLang, setCurrentLang, t } from './config.js';
       cursor: not-allowed;
       pointer-events: none;
     }
+    .lang-drop-disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
   `;
   document.head.appendChild(s);
 })();
@@ -39,9 +44,10 @@ function getLogoSrc() {
 }
 
 export function buildNav(activeStage, onNavigate, navState = {}) {
-  // navState: { hasAnalysis: bool, hasPreview: bool }
+  // navState: { hasAnalysis: bool, hasPreview: bool, langLocked: bool }
   const hasAnalysis = !!navState.hasAnalysis;
   const hasPreview  = !!navState.hasPreview;
+  const langLocked  = !!navState.langLocked; // true while in the loading stage
 
   return `
     <nav class="r-nav">
@@ -60,8 +66,8 @@ export function buildNav(activeStage, onNavigate, navState = {}) {
             >${t(n.labelKey)}</a>`;
         }).join('')}
       </div>
-      <div class="lang-drop" id="lang-drop" aria-label="Language">
-        <button class="lang-drop-btn" id="lang-drop-btn" aria-haspopup="listbox" aria-expanded="false">
+      <div class="lang-drop${langLocked ? ' lang-drop-disabled' : ''}" id="lang-drop" aria-label="Language" ${langLocked ? 'aria-disabled="true"' : ''}>
+        <button class="lang-drop-btn" id="lang-drop-btn" aria-haspopup="listbox" aria-expanded="false" ${langLocked ? 'disabled tabindex="-1"' : ''}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
           </svg>
@@ -126,11 +132,13 @@ export function attachNavListeners(container, onNavigate) {
   if (langBtn && langMenu) {
     langBtn.addEventListener('click', e => {
       e.stopPropagation();
+      if (langDrop.classList.contains('lang-drop-disabled')) return;
       const open = langDrop.classList.toggle('open');
       langBtn.setAttribute('aria-expanded', open);
     });
     langMenu.querySelectorAll('.lang-drop-item').forEach(item => {
       item.addEventListener('click', () => {
+        if (langDrop.classList.contains('lang-drop-disabled')) return;
         langMenu.querySelectorAll('.lang-drop-item').forEach(i => i.classList.remove('active'));
         item.classList.add('active');
         if (langLabel) langLabel.textContent = item.dataset.label;
@@ -141,6 +149,19 @@ export function attachNavListeners(container, onNavigate) {
         document.dispatchEvent(new CustomEvent('rooster:lang-change', { detail: item.dataset.lang }));
         langDrop.classList.remove('open');
         langBtn.setAttribute('aria-expanded', 'false');
+
+        // Changing language always sends the user back to home, from any stage —
+        // stale per-stage state (analysis text, preview content, etc.) was generated
+        // in the old language and doesn't auto-translate in place, so staying on the
+        // current stage would show mismatched/stale content. The loading stage is the
+        // only exception, and it's excluded from reaching here at all since the
+        // dropdown itself is disabled (langLocked) while a generation is in flight.
+        //
+        // The actual navigation to 'hero' happens in app.js's 'rooster:lang-change'
+        // listener (onLangChange), which fires synchronously above via dispatchEvent —
+        // it runs BEFORE this line. Do not also call onNavigate('hero') here: navigate()
+        // is guarded by isTransitioning, so a second call this tick is a silent no-op
+        // and just causes confusion about which call "did" the navigation.
       });
     });
     // Remove previous close-on-outside-click handler before adding a new one
@@ -162,6 +183,7 @@ export function mountNav(onNavigate, navState = {}) {
   if (!shell) return;
   // Store latest navState on the shell so lang-change rebuilds use it
   shell._navState = navState;
+  shell._onNavigate = onNavigate;
   shell.innerHTML = buildNav('hero', onNavigate, navState);
   attachNavListeners(shell, onNavigate);
 
@@ -181,6 +203,10 @@ export function updateNavActive(stage, navState = {}) {
   if (shell) {
     // Merge new navState into shell's stored state
     shell._navState = { ...(shell._navState || {}), ...navState };
+    // Auto-manage langLocked based on stage unless explicitly overridden in navState
+    if (!('langLocked' in navState)) {
+      shell._navState.langLocked = stage === 'loading';
+    }
   }
   // Re-render nav fully so disabled states update correctly
   const onNavigate = shell?._onNavigate;

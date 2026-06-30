@@ -30,6 +30,28 @@ function getQuestionLabel(qtype) {
   return map[qtype] || 'Analysis';
 }
 
+// ── Error / info card builders ──────────────────────────────
+// Used for backend failures, draw-blocked questions, and "too soon" states.
+// message is expected to already be escaped by the caller where it comes
+// from untrusted/dynamic text (see escapeHtml() calls at each call site).
+function errorCard(message) {
+  return `
+    <div class="answer-card answer-card-error">
+      <div class="answer-card-head">⚠ Error</div>
+      <div class="answer-card-body">${message}</div>
+    </div>
+  `;
+}
+
+function infoCard(title, message) {
+  return `
+    <div class="answer-card">
+      <div class="answer-card-head">${title}</div>
+      <div class="answer-card-body">${message}</div>
+    </div>
+  `;
+}
+
 export function renderResult(container, state, onNavigate) {
   const myGen  = ++resultRenderGen;
   const match  = state.pinnedMatch;

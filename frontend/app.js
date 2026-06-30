@@ -34,6 +34,9 @@ const app = document.getElementById('app');
 
 let currentStageName = 'hero';
 let isTransitioning  = false; // guard against double-fire
+let loadingInFlight  = false; // guard against double-firing the loading stage specifically —
+                               // the loading branch below bypasses isTransitioning on purpose
+                               // (no exit-fade), so it needs its own re-entrancy guard
 
 function getEnterClass(from, to) {
   if (from === 'result'  && to === 'insight') return 'page-enter-left';
@@ -68,6 +71,7 @@ function renderStage(stage, enterClass) {
     stageEl.addEventListener('animationend', () => stageEl.classList.remove(enterClass), { once: true });
   }
   currentStageName = stage;
+  if (stage !== 'loading') loadingInFlight = false; // safety net for edge paths (e.g. renderLoading bailing straight to hero when no match is pinned, before the navigate('loading') call above finishes)
 
   // Map internal stage names to nav link data-nav values
   const stageToNav = {
@@ -93,8 +97,19 @@ function navigate(stage) {
   const from       = currentStageName;
   const enterClass = getEnterClass(from, stage);
 
-  // Loading stage has its own animation — skip exit fade
-  if (from === 'loading' || stage === 'loading') {
+  // Loading stage has its own animation — skip exit fade.
+  // This branch intentionally skips isTransitioning, so it needs its own guard:
+  // ignore a second navigate('loading') while a loading run is already in flight
+  // (e.g. stage5-preview re-entering loading, or a stray double-trigger) instead
+  // of starting a second overlapping fetch.
+  if (stage === 'loading') {
+    if (loadingInFlight) return;
+    loadingInFlight = true;
+    renderStage(stage, enterClass);
+    return;
+  }
+  if (from === 'loading') {
+    loadingInFlight = false;
     renderStage(stage, enterClass);
     return;
   }
@@ -123,8 +138,14 @@ if (lang) {
 // Lang change — named handler prevents stacking if navigate() is called during boot
 function onLangChange(e) {
   setCurrentLang(e.detail);
-  const stage = currentStageName;
-  navigate(stage === 'result' || stage === 'insight' ? 'hero' : stage);
+  // Always redirect to hero on language change, from any stage — stale
+  // per-stage state was generated in the old language and doesn't
+  // auto-translate in place. (nav.js also calls onNavigate('hero') after
+  // dispatching this event, but since dispatchEvent is synchronous, this
+  // handler runs FIRST — whichever call we make here must already be
+  // 'hero', or the isTransitioning guard in navigate() will silently
+  // drop nav.js's later 'hero' call.)
+  navigate('hero');
 }
 document.removeEventListener('rooster:lang-change', onLangChange);
 document.addEventListener('rooster:lang-change', onLangChange);

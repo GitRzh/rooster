@@ -18,6 +18,8 @@ TTL = {
 }
 
 def _ttl_for(key: str) -> int:
+    if key in _overrides:
+        return _overrides[key]
     for prefix, ttl in TTL.items():
         if key.startswith(prefix):
             return ttl
@@ -32,9 +34,15 @@ def get(key: str):
             return None
         return entry["data"]
 
-def set(key: str, data):
+_overrides = {}
+
+def set(key: str, data, ttl: int | None = None):
     with _lock:
         _cache[key] = {"data": data, "fetched_at": time.time()}
+        if ttl is not None:
+            _overrides[key] = ttl
+        else:
+            _overrides.pop(key, None)
 
 def age(key: str) -> float:
     with _lock:

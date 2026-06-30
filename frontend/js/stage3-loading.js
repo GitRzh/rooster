@@ -23,7 +23,15 @@ function getQuestionLabel(qtype, winner, loser) {
     .replace('[team]', loser  || 'loser');
 }
 
+// Bumped on every renderLoading() call. The async runner captures the value
+// at start and checks it before touching the DOM or navigating — if a newer
+// loading run has started in the meantime (e.g. a re-entrant navigate call
+// slipped past the app.js guard), the stale run silently no-ops instead of
+// firing a second onNavigate or writing into a torn-down container.
+let loadingGen = 0;
+
 export async function renderLoading(container, state, onNavigate) {
+  const myGen = ++loadingGen;
   const match = state.pinnedMatch;
   if (!match) { onNavigate('hero'); return; }
 
@@ -46,7 +54,7 @@ export async function renderLoading(container, state, onNavigate) {
       </div>
     `;
     attachNavListeners(container, onNavigate);
-    await runPreview(container, state, onNavigate, match);
+    await runPreview(container, state, onNavigate, match, myGen);
     return;
   }
 
@@ -83,11 +91,11 @@ export async function renderLoading(container, state, onNavigate) {
   `;
 
   attachNavListeners(container, onNavigate);
-  await runAnalysis(container, state, onNavigate, match, qtype, state.customQuestion || null);
+  await runAnalysis(container, state, onNavigate, match, qtype, state.customQuestion || null, myGen);
 }
 
 // ── Shared analysis runner ────────────────────────────────────
-async function runAnalysis(container, state, onNavigate, match, qtype, customQuestion) {
+async function runAnalysis(container, state, onNavigate, match, qtype, customQuestion, myGen) {
   let pct     = 0;
   let apiDone = false;
 
@@ -107,6 +115,8 @@ async function runAnalysis(container, state, onNavigate, match, qtype, customQue
   const apiResult = await callAnalyze(match, qtype, customQuestion);
   apiDone = true;
   clearInterval(interval);
+
+  if (myGen !== loadingGen) return; // a newer loading run started — abandon this one, no double-navigate
 
   pct = 100;
   setBar(fillEl, pctEl, 100);
@@ -148,7 +158,7 @@ function wipeTransition(container) {
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── Preview runner ────────────────────────────────────────────
-async function runPreview(container, state, onNavigate, match) {
+async function runPreview(container, state, onNavigate, match, myGen) {
   let pct     = 0;
   let apiDone = false;
 
@@ -166,6 +176,8 @@ async function runPreview(container, state, onNavigate, match) {
   const apiResult = await callPreview(match);
   apiDone = true;
   clearInterval(interval);
+
+  if (myGen !== loadingGen) return; // a newer loading run started — abandon this one, no double-navigate
 
   pct = 100;
   setBar(fillEl, pctEl, 100);
@@ -194,7 +206,10 @@ async function callPreview(match) {
       language: getApiLang(),
     };
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    // /preview can run up to 5 sequential Groq calls server-side (3 analysis
+    // retry attempts + 2 player retry attempts), so 45s is no longer enough —
+    // bumped to 100s to cover a worst-case full retry chain plus headroom.
+    const timeout = setTimeout(() => controller.abort(), 100000);
     const res = await fetch(`${API_BASE}/preview`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -202,6 +217,12 @@ async function callPreview(match) {
       signal:  controller.signal,
     });
     clearTimeout(timeout);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { detail = (await res.json()).detail || detail; } catch {}
+      console.error('Preview HTTP error:', res.status, detail);
+      return { error: true, headline: `Preview failed: ${detail}` };
+    }
     return await res.json();
   } catch (err) {
     console.error('Preview error:', err);
@@ -229,7 +250,13 @@ async function callAnalyze(match, qtype, customQuestion) {
       language:        getApiLang(),
     };
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    // Non-English questions chain up to 3 sequential Groq calls server-side
+    // (English generation, name extraction, translation), and the generation +
+    // translation calls each retry up to 3x with backoff up to 10s — worst case
+    // comfortably exceeds the old 45s budget and aborts a still-healthy request,
+    // showing a false "Analysis failed" error mid-demo. Matched to /preview's
+    // 100s budget for the same reason.
+    const timeout = setTimeout(() => controller.abort(), 100000);
     const res = await fetch(`${API_BASE}/analyze`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -237,6 +264,12 @@ async function callAnalyze(match, qtype, customQuestion) {
       signal:  controller.signal,
     });
     clearTimeout(timeout);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { detail = (await res.json()).detail || detail; } catch {}
+      console.error('Analyze HTTP error:', res.status, detail);
+      return { answer: `Analysis failed: ${detail}`, error: true };
+    }
     return await res.json();
   } catch (err) {
     console.error('Analyze error:', err);

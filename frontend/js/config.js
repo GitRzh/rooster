@@ -316,6 +316,31 @@ export function getApiLang() {
 // RTL note: Arabic strings are written in natural RTL flow; no forced LTR.
 
 const UI_STRINGS = {
+  // ── Stage 1: Hero search bar ─────────────────────────────────
+  hero_search_placeholder: {
+    en: 'Search match using team name',
+    es: 'Buscar partido por nombre de equipo',
+    fr: 'Rechercher un match par nom d\u2019équipe',
+    ar: 'ابحث عن مباراة باسم الفريق',
+    pt: 'Buscar partida pelo nome do time',
+    de: 'Spiel anhand des Mannschaftsnamens suchen',
+    ko: '팀 이름으로 경기 검색',
+    zh: '按球队名称搜索比赛',
+    ja: 'チーム名で試合を検索',
+    tr: 'Takım adıyla maç ara',
+  },
+  hero_search_by_date: {
+    en: 'Search by date',
+    es: 'Buscar por fecha',
+    fr: 'Rechercher par date',
+    ar: 'ابحث حسب التاريخ',
+    pt: 'Buscar por data',
+    de: 'Nach Datum suchen',
+    ko: '날짜로 검색',
+    zh: '按日期搜索',
+    ja: '日付で検索',
+    tr: 'Tarihe göre ara',
+  },
   // ── Stage 2: Question card titles ────────────────────────────
   q_why_winner_title: {
     en: 'Why did they win?',      es: '¿Por qué ganaron?',
@@ -500,11 +525,11 @@ const UI_STRINGS = {
   },
   // ── Stage 2: "Too short" reject message ───────────────────────
   q_too_short: {
-    en: '⚠ Too short.',          es: '⚠ Demasiado corto.',
-    fr: '⚠ Trop court.',         ar: '⚠ قصير جداً.',
-    pt: '⚠ Muito curta.',        de: '⚠ Zu kurz.',
-    ko: '⚠ 너무 짧습니다.',        zh: '⚠ 太短了。',
-    ja: '⚠ 短すぎます。',          tr: '⚠ Çok kısa.',
+    en: '⚠ Invalid.',             es: '⚠ Inválido.',
+    fr: '⚠ Invalide.',            ar: '⚠ غير صالح.',
+    pt: '⚠ Inválido.',            de: '⚠ Ungültig.',
+    ko: '⚠ 유효하지 않습니다.',      zh: '⚠ 无效。',
+    ja: '⚠ 無効です。',            tr: '⚠ Geçersiz.',
   },
   // ── Stage 3: Loading label ────────────────────────────────────
   loading_analyzing: {
@@ -961,6 +986,118 @@ const UI_STRINGS = {
     pt: 'Sans + Mono em todo o app',  de: 'Sans + Mono, überall eingesetzt',
     ko: 'Sans + Mono 전체 사용',        zh: 'Sans + Mono，贯穿全局',
     ja: 'Sans + Mono を全体で使用',     tr: 'Sans + Mono, her yerde kullanılır',
+  },
+  // ── Stage 0: Search bar ────────────────────────────────────────
+  search_by_team: {
+    en: 'Search match using team name',     es: 'Buscar partido por nombre de equipo',
+    fr: 'Rechercher un match par équipe',   ar: 'ابحث عن مباراة باسم الفريق',
+    pt: 'Buscar partida pelo nome do time', de: 'Spiel nach Teamname suchen',
+    ko: '팀 이름으로 경기 검색',              zh: '按球队名称搜索比赛',
+    ja: 'チーム名で試合を検索',               tr: 'Takım adına göre maç ara',
+  },
+  search_by_date: {
+    en: 'Search by date',  es: 'Buscar por fecha',
+    fr: 'Rechercher par date', ar: 'البحث حسب التاريخ',
+    pt: 'Buscar por data', de: 'Nach Datum suchen',
+    ko: '날짜로 검색',        zh: '按日期搜索',
+    ja: '日付で検索',         tr: 'Tarihe göre ara',
+  },
+  // ── Stage 5: Preview ────────────────────────────────────────────
+  pv_upcoming: {
+    en: 'Upcoming',  es: 'Próximo',
+    fr: 'À venir',   ar: 'قادمة',
+    pt: 'Em breve',  de: 'Bevorstehend',
+    ko: '예정',        zh: '即将进行',
+    ja: '予定',        tr: 'Yaklaşan',
+  },
+  pv_preview: {
+    en: 'Preview',     es: 'Vista previa',
+    fr: 'Aperçu',      ar: 'معاينة',
+    pt: 'Pré-estreia', de: 'Vorschau',
+    ko: '프리뷰',        zh: '预览',
+    ja: 'プレビュー',     tr: 'Önizleme',
+  },
+  pv_change_match: {
+    en: 'Change Match',  es: 'Cambiar partido',
+    fr: 'Changer de match', ar: 'تغيير المباراة',
+    pt: 'Trocar partida', de: 'Spiel wechseln',
+    ko: '경기 변경',        zh: '更换比赛',
+    ja: '試合を変更',       tr: 'Maçı Değiştir',
+  },
+  pv_style: {
+    en: 'Style',   es: 'Estilo',
+    fr: 'Style',   ar: 'الأسلوب',
+    pt: 'Estilo',  de: 'Stil',
+    ko: '스타일',    zh: '风格',
+    ja: 'スタイル',  tr: 'Stil',
+  },
+  pv_danger: {
+    en: 'Danger',   es: 'Peligro',
+    fr: 'Danger',   ar: 'الخطورة',
+    pt: 'Perigo',   de: 'Gefahr',
+    ko: '위협 요소',  zh: '威胁',
+    ja: '脅威',      tr: 'Tehlike',
+  },
+  pv_vulnerability: {
+    en: 'Vulnerability',  es: 'Vulnerabilidad',
+    fr: 'Vulnérabilité',  ar: 'نقطة الضعف',
+    pt: 'Vulnerabilidade', de: 'Schwachstelle',
+    ko: '약점',             zh: '弱点',
+    ja: '弱点',             tr: 'Zafiyet',
+  },
+  pv_tactical_contrast: {
+    en: 'Tactical Contrast',  es: 'Contraste táctico',
+    fr: 'Contraste tactique', ar: 'التباين التكتيكي',
+    pt: 'Contraste tático',   de: 'Taktischer Kontrast',
+    ko: '전술적 대비',          zh: '战术对比',
+    ja: '戦術的対比',           tr: 'Taktiksel Karşıtlık',
+  },
+  pv_why_unmissable: {
+    en: 'Why This Match Is Unmissable',  es: 'Por qué no te puedes perder este partido',
+    fr: 'Pourquoi ce match est incontournable', ar: 'لماذا هذه المباراة لا تُفوَّت',
+    pt: 'Por que esta partida é imperdível',    de: 'Warum dieses Spiel ein Muss ist',
+    ko: '이 경기를 놓쳐선 안 되는 이유',           zh: '为何这场比赛不容错过',
+    ja: 'この試合を見逃せない理由',                tr: 'Bu Maçı Kaçırmamanız Gereken Sebep',
+  },
+  pv_watch: {
+    en: 'Watch',  es: 'Vigilar',
+    fr: 'À suivre', ar: 'مراقبة',
+    pt: 'Observar', de: 'Beobachten',
+    ko: '주목 선수',  zh: '关注球员',
+    ja: '注目選手',  tr: 'İzlenecekler',
+  },
+  pv_first_meeting_text: {
+    en: 'First ever World Cup meeting — history starts here.',
+    es: 'Primer enfrentamiento en un Mundial — la historia empieza aquí.',
+    fr: 'Première confrontation en Coupe du Monde — l\'histoire commence ici.',
+    ar: 'أول مواجهة بينهما في كأس العالم — التاريخ يبدأ هنا.',
+    pt: 'Primeiro confronto em Copas do Mundo — a história começa aqui.',
+    de: 'Erstes WM-Aufeinandertreffen überhaupt — Geschichte beginnt hier.',
+    ko: '월드컵 사상 첫 맞대결 — 역사가 시작된다.',
+    zh: '世界杯历史上的首次交锋——历史从此刻开始。',
+    ja: 'ワールドカップ史上初対決——歴史はここから始まる。',
+    tr: 'Dünya Kupası tarihindeki ilk karşılaşma — tarih burada başlıyor.',
+  },
+  pv_first_meeting_badge: {
+    en: 'First Meeting',  es: 'Primer enfrentamiento',
+    fr: 'Première confrontation', ar: 'أول مواجهة',
+    pt: 'Primeiro confronto',     de: 'Erstes Aufeinandertreffen',
+    ko: '첫 맞대결',                zh: '首次交锋',
+    ja: '初対決',                  tr: 'İlk Karşılaşma',
+  },
+  pv_manager: {
+    en: 'Manager',  es: 'Entrenador',
+    fr: 'Sélectionneur', ar: 'المدرب',
+    pt: 'Técnico',  de: 'Trainer',
+    ko: '감독',       zh: '主帅',
+    ja: '監督',       tr: 'Teknik Direktör',
+  },
+  pv_player: {
+    en: 'Player',  es: 'Jugador',
+    fr: 'Joueur',  ar: 'لاعب',
+    pt: 'Jogador', de: 'Spieler',
+    ko: '선수',      zh: '球员',
+    ja: '選手',      tr: 'Oyuncu',
   },
 };
 

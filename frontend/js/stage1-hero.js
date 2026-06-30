@@ -26,7 +26,7 @@ export function renderHero(container, state, onNavigate) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" id="search-input" placeholder="Search match using team name" autocomplete="off" aria-label="Search matches">
+          <input type="text" id="search-input" placeholder="${t('hero_search_placeholder')}" autocomplete="off" aria-label="Search matches">
           <div class="search-results hidden" id="search-results" role="listbox"></div>
         </div>
         <button class="cal-icon-btn" id="cal-icon-btn" aria-label="Open match calendar" title="Search match using dates">
@@ -36,7 +36,7 @@ export function renderHero(container, state, onNavigate) {
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          <span>Search by date</span>
+          <span>${t('hero_search_by_date')}</span>
         </button>
       </div>
       <!-- Calendar overlay -->
@@ -370,11 +370,19 @@ function attachSearch(container, onNavigate) {
     if (e.key === 'Escape') results.classList.add('hidden');
   });
 
-  document.addEventListener('click', e => {
+  // Previous Home visits leave their own document click listener attached
+  // (it closes over the now-detached old #search-results node) — remove it
+  // before adding a new one, or repeated Home → other stage → Home navigation
+  // during a demo silently stacks up dead listeners.
+  if (attachSearch._docClickHandler) {
+    document.removeEventListener('click', attachSearch._docClickHandler);
+  }
+  attachSearch._docClickHandler = e => {
     if (!container.querySelector('.search-wrap')?.contains(e.target)) {
       results.classList.add('hidden');
     }
-  });
+  };
+  document.addEventListener('click', attachSearch._docClickHandler);
 }
 
 // Short-form / abbreviation → full country name for search expansion
@@ -621,9 +629,13 @@ function attachCalendar(container, onNavigate) {
 
   backdrop.addEventListener('click', () => closeCalendar(container));
 
-  document.addEventListener('keydown', e => {
+  if (attachCalendar._escHandler) {
+    document.removeEventListener('keydown', attachCalendar._escHandler);
+  }
+  attachCalendar._escHandler = e => {
     if (e.key === 'Escape' && calendarOpen) closeCalendar(container);
-  });
+  };
+  document.addEventListener('keydown', attachCalendar._escHandler);
 }
 
 function openCalendar(container, onNavigate) {
@@ -801,9 +813,9 @@ function renderCalendarDateMatches(container, matches, onNavigate) {
           ${aFlagHtml}
         </div>
         ${hasScore
-          ? `<div class="cal-match-status cal-status-done">FINISHED</div>`
+          ? `<div class="cal-match-status cal-status-done">${t('section_finished')}</div>`
           : `<div class="cal-match-status-row">
-               <button class="cal-match-status cal-status-preview" data-preview-id="${m.id}" type="button">PREVIEW</button>
+               <button class="cal-match-status cal-status-preview" data-preview-id="${m.id}" type="button">${t('preview_btn')}</button>
                <div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>
              </div>`}
       </div>
@@ -909,9 +921,9 @@ function renderCalendarSearchResults(container, onNavigate) {
           ${aFlagHtml}
         </div>
         ${hasScore
-          ? `<div class="cal-match-status cal-status-done">FINISHED</div>`
+          ? `<div class="cal-match-status cal-status-done">${t('section_finished')}</div>`
           : `<div class="cal-match-status-row">
-               <button class="cal-match-status cal-status-preview" data-preview-id="${m.id}" type="button">PREVIEW</button>
+               <button class="cal-match-status cal-status-preview" data-preview-id="${m.id}" type="button">${t('preview_btn')}</button>
                <div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>
              </div>`}
       </div>
