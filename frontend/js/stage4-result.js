@@ -9,6 +9,16 @@ import {
 } from './config.js';
 import { attachNavListeners } from './nav.js';
 
+// ── Section header icons ────────────────────────────────────
+const ICON_TLDR = `<svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 11-13h-7l1-7z"/></svg>`;
+const ICON_NARRATIVE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>`;
+
+// Bumped on every renderResult() call. Async highlight passes capture the
+// value at start and check it before writing to the DOM — if a newer render
+// has started in the meantime, the stale pass silently no-ops instead of
+// stomping fresh HTML with a half-finished/race-corrupted string.
+let resultRenderGen = 0;
+
 function getQuestionLabel(qtype) {
   const map = {
     why_winner:         t('q_why_winner_title'),
@@ -21,6 +31,7 @@ function getQuestionLabel(qtype) {
 }
 
 export function renderResult(container, state, onNavigate) {
+  const myGen  = ++resultRenderGen;
   const match  = state.pinnedMatch;
   const result = state.analysisResult;
   const qtype  = state.selectedQuestion;
@@ -36,7 +47,7 @@ export function renderResult(container, state, onNavigate) {
   const aFlag = flagUrl(match.away, 80);
 
   container.innerHTML = `
-    <div class="result-body stage">
+    <div class="result-body stage" id="result-stage">
 
       <!-- LEFT 65% -->
       <div class="result-left">
@@ -70,17 +81,18 @@ export function renderResult(container, state, onNavigate) {
           <div class="result-header-right">
             <span class="result-q-badge">${qLabel}</span>
             <button class="btn-back" id="back-to-insight" aria-label="Back to questions">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-                <polyline points="15 18 9 12 15 6"/>
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
               ${t('questions_btn')}
             </button>
           </div>
         </div>
 
-        <div id="answer-area" class="answer-section">
-          <div class="answer-card">
-            <div class="answer-card-head">Loading analysis…</div>
+        <!-- Scrollable content frame — same border-fade + bottom hue as preview -->
+        <div class="result-content-frame-wrap" id="result-frame-wrap">
+          <div id="answer-area" class="answer-section result-content-frame">
+            <div class="answer-card">
+              <div class="answer-card-head">Loading analysis…</div>
+            </div>
           </div>
         </div>
 
@@ -96,20 +108,125 @@ export function renderResult(container, state, onNavigate) {
       </aside>
 
     </div>
+
+    <style>
+      body { overflow: hidden !important; height: 100vh !important; }
+
+      #result-stage {
+        height: calc(100vh - var(--nav-h) - var(--ticker-h));
+        min-height: unset;
+        overflow: hidden;
+      }
+
+      #result-stage .result-left {
+        height: 100%;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 0;
+      }
+
+      #result-stage .result-pinned-bar { flex-shrink: 0; }
+
+      #result-stage .result-right {
+        height: 100%;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Content frame: border-fade top, bottom hue, internal scroll ── */
+      .result-content-frame-wrap {
+        flex: 1;
+        min-height: 0;
+        margin: 16px 28px 0;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .result-content-frame-wrap::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-top: 1px solid rgba(245,230,66,0.3);
+        border-left: 1px solid rgba(245,230,66,0.3);
+        border-right: 1px solid rgba(245,230,66,0.3);
+        border-bottom: none;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+        -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 40%);
+        mask-image: linear-gradient(to bottom, black 0%, transparent 40%);
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .result-content-frame-wrap::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 52px;
+        background: linear-gradient(to top, var(--bg) 0%, transparent 100%);
+        pointer-events: none;
+        border-radius: 0 0 var(--radius-md) var(--radius-md);
+        transition: opacity 0.25s;
+        z-index: 2;
+      }
+      .result-content-frame-wrap.at-end::after { opacity: 0; }
+
+      .result-content-frame {
+        height: 100%;
+        overflow-y: auto;
+        padding: 16px 16px 60px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        position: relative;
+        z-index: 0;
+      }
+
+      .answer-card-head { display: flex; align-items: center; gap: 6px; }
+      .answer-card-head svg { flex-shrink: 0; }
+    </style>
   `;
 
   attachNavListeners(container, onNavigate);
-  container.querySelector('#back-to-insight').addEventListener('click', () => onNavigate('insight'));
+  container.querySelector('#back-to-insight').addEventListener('click', () => {
+    document.body.style.overflow = '';
+    document.body.style.height   = '';
+    onNavigate('insight');
+  });
+  container.querySelectorAll('[data-nav]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.body.style.overflow = '';
+      document.body.style.height   = '';
+    });
+  });
 
   if (isQA) {
-    attachQAResult(container, result, match, state, onNavigate).catch(e => console.error("QA result error:", e));
+    attachQAResult(container, result, match, state, onNavigate, myGen).catch(e => console.error("QA result error:", e));
   } else {
-    renderAnswerCards(container, result, match);
+    renderAnswerCards(container, result, match, myGen);
+  }
+
+  // ── Scroll fade hue on content frame ──
+  const frameEl     = container.querySelector('.result-content-frame');
+  const frameWrapEl = container.querySelector('.result-content-frame-wrap');
+  if (frameEl && frameWrapEl) {
+    const checkFrameFade = () => {
+      const atEnd = frameEl.scrollHeight - frameEl.scrollTop - frameEl.clientHeight < 8;
+      frameWrapEl.classList.toggle('at-end', atEnd);
+    };
+    frameEl.addEventListener('scroll', checkFrameFade, { passive: true });
+    setTimeout(checkFrameFade, 100);
+    // Re-check after async content (answer cards / QA) finishes rendering
+    const mo = new MutationObserver(() => setTimeout(checkFrameFade, 50));
+    mo.observe(frameEl, { childList: true, subtree: true });
   }
 }
 
 // ── Answer cards (async — validates player names) ─────────────
-async function renderAnswerCards(container, result, match) {
+async function renderAnswerCards(container, result, match, myGen) {
   const areaEl = container.querySelector('#answer-area');
   if (!areaEl) return;
 
@@ -135,33 +252,41 @@ async function renderAnswerCards(container, result, match) {
 
   const { tldr, narr: full } = parseAnswer(answer);
 
+  if (myGen !== resultRenderGen) return; // a newer render started — abandon this one
+
   areaEl.innerHTML = `
     <div class="answer-card" id="card-tldr">
-      <div class="answer-card-head">${t('tldr')}</div>
+      <div class="answer-card-head">${ICON_TLDR}${t('tldr')}</div>
       <div class="answer-card-body" id="tldr-body">${escapeHtml(tldr)}</div>
     </div>
     <div class="answer-card answer-card-narrative" id="card-full">
-      <div class="answer-card-head">${t('full_narrative')}</div>
+      <div class="answer-card-head">${ICON_NARRATIVE}${t('full_narrative')}</div>
       <div class="answer-card-body answer-card-body-scroll" id="full-body">${escapeHtml(full)}</div>
+      <div class="answer-fade-hue" aria-hidden="true"></div>
     </div>
   `;
+  attachNarrativeFade(container);
 
   const names = await extractPlayerNamesFromBackend(answer);
+  if (myGen !== resultRenderGen) return; // bail before kicking off Wikipedia validation for a stale render
+
   if (names.length) {
     // Highlight across both blocks so each name only gets a link on first occurrence.
     const { tldrHl, fullHl } = await highlightPlayersDeduped(tldr, full, names);
+    if (myGen !== resultRenderGen) return; // bail before the final DOM write
 
     const tldrEl = container.querySelector('#tldr-body');
     const fullEl = container.querySelector('#full-body');
     if (tldrEl) tldrEl.innerHTML = tldrHl;
     if (fullEl) fullEl.innerHTML = fullHl;
 
-    attachPlayerHovers(container);
+    attachPlayerHovers(container, match);
+    attachNarrativeFade(container);
   }
 }
 
 // ── Q&A result — TLDR + Narrative like other tabs ─────────────
-async function attachQAResult(container, result, match, state, onNavigate) {
+async function attachQAResult(container, result, match, state, onNavigate, myGen) {
   const areaEl = container.querySelector('#answer-area');
   if (!areaEl) return;
 
@@ -178,10 +303,10 @@ async function attachQAResult(container, result, match, state, onNavigate) {
       <div class="answer-card" style="border-color:rgba(239,68,68,0.35);">
         <div class="answer-card-body" style="display:flex;flex-direction:column;gap:0.5rem;padding:1.25rem;">
           <div style="color:#ef4444;font-weight:700;font-size:0.95rem;">
-            ⚠ ${escapeHtml(result.answer || 'Ask something about this match.')}
+            ⚠ ${t('off_topic_msg')}
           </div>
           <div style="color:rgba(255,255,255,0.4);font-size:0.8rem;">
-            Try: tactics, players, goals, moments, decisions, "what if…"
+            ${t('off_topic_hint')}
           </div>
         </div>
       </div>
@@ -191,7 +316,7 @@ async function attachQAResult(container, result, match, state, onNavigate) {
     if (panelEl) {
       panelEl.innerHTML = `
         <div style="padding:24px 18px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--yellow);">Try Again</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--yellow);">Ask Again</div>
           <div style="font-size:12px;color:var(--muted-bright);line-height:1.6;">
             Ask something about the match — a player's performance, a tactical decision, a key moment, or a "what if" scenario.
           </div>
@@ -200,8 +325,9 @@ async function attachQAResult(container, result, match, state, onNavigate) {
             e.g. "Who was the best player on the pitch?"<br>
             e.g. "What if Haaland had started?"
           </div>
-          <button id="qa-ask-again-btn" style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;background:var(--blue);color:var(--yellow);border:none;border-radius:var(--radius-sm);padding:8px 16px;cursor:pointer;width:100%;margin-top:4px;">
-            ← Ask Again
+          <button id="qa-ask-again-btn" style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;background:var(--blue);color:var(--yellow);border:none;border-radius:var(--radius-sm);padding:8px 16px;cursor:pointer;width:100%;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:7px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+            ${t('ask_again_btn')}
           </button>
         </div>
       `;
@@ -243,24 +369,31 @@ async function attachQAResult(container, result, match, state, onNavigate) {
   areaEl.innerHTML = `
     ${qAsked ? `<div class="qa-result-question">"${qAsked}"</div>` : ''}
     <div class="answer-card" id="card-tldr">
-      <div class="answer-card-head">${t('tldr')}</div>
+      <div class="answer-card-head">${ICON_TLDR}${t('tldr')}</div>
       <div class="answer-card-body" id="tldr-body">${escapeHtml(tldrClean)}</div>
     </div>
     <div class="answer-card answer-card-narrative" id="card-full">
-      <div class="answer-card-head">${t('full_narrative')}</div>
+      <div class="answer-card-head">${ICON_NARRATIVE}${t('full_narrative')}</div>
       <div class="answer-card-body answer-card-body-scroll" id="full-body">${escapeHtml(fullClean)}</div>
+      <div class="answer-fade-hue" aria-hidden="true"></div>
     </div>
   `;
+  attachNarrativeFade(container);
 
   const names = await extractPlayerNamesFromBackend(answer);
+  if (myGen !== resultRenderGen) return; // a newer render started — abandon this one
+
   if (names.length) {
     // Dedup: first occurrence across tldr+full gets the link, rest are plain
     const { tldrHl, fullHl } = await highlightPlayersDeduped(tldrClean, fullClean, names);
+    if (myGen !== resultRenderGen) return; // bail before the final DOM write
+
     const tldrEl = container.querySelector('#tldr-body');
     const fullEl = container.querySelector('#full-body');
     if (tldrEl) tldrEl.innerHTML = tldrHl;
     if (fullEl) fullEl.innerHTML = fullHl;
-    attachPlayerHovers(container);
+    attachPlayerHovers(container, match);
+    attachNarrativeFade(container);
   }
 }
 
@@ -347,7 +480,7 @@ function attachQAChat(container, match, state) {
           <div class="qa-msg-q">${escapeHtml(q)}</div>
           <div class="qa-answer">${ansHl}</div>
         `;
-        attachPlayerHovers(container);
+        attachPlayerHovers(container, match);
       }
     } catch (err) {
       const el = container.querySelector(`#${tempId}`);
@@ -370,31 +503,49 @@ function attachQAChat(container, match, state) {
   });
 }
 
-// ── Player hover → rich right panel ──────────────────────────
-function attachPlayerHovers(container) {
+// ── Player click → rich right panel ──────────────────────────
+// ── Scroll fade hue on the Full Narrative card (same pattern as preview) ──
+function attachNarrativeFade(container) {
+  const scrollEl = container.querySelector('#full-body');
+  const cardEl   = container.querySelector('#card-full');
+  if (!scrollEl || !cardEl) return;
+  const checkFade = () => {
+    const atEnd = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 8;
+    cardEl.classList.toggle('at-end', atEnd);
+  };
+  scrollEl.addEventListener('scroll', checkFade, { passive: true });
+  setTimeout(checkFade, 100);
+}
+
+function attachPlayerHovers(container, match) {
   container.querySelectorAll('.player-hl').forEach(hl => {
     const fresh = hl.cloneNode(true);
     hl.replaceWith(fresh);
   });
 
-  let hoverTimer = null;
+  // Known managers for THIS match — ground truth from football-data.org,
+  // not a guess. Used to force-classify hover cards instead of trusting
+  // the LLM/regex classifier, which can be fooled by ambiguous bios.
+  const knownCoaches = [match?.home_coach, match?.away_coach]
+    .filter(Boolean)
+    .map(n => n.toLowerCase().trim());
+
   let activeName = null;
 
   container.querySelectorAll('.player-hl').forEach(hl => {
-    hl.addEventListener('mouseenter', () => {
-      hoverTimer = setTimeout(async () => {
-        const name = hl.dataset.name;
-        if (!name || activeName === name) return;
-        activeName = name;
-        await loadEntityCard(container, name);
-      }, 1500);
+    hl.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const name = hl.dataset.name;
+      if (!name || activeName === name) return;
+      activeName = name;
+      const forcedType = knownCoaches.includes(name.toLowerCase().trim()) ? 'manager' : null;
+      await loadEntityCard(container, name, forcedType);
     });
-    hl.addEventListener('mouseleave', () => clearTimeout(hoverTimer));
   });
 }
 
 // ── Rich entity card ──────────────────────────────────────────
-async function loadEntityCard(container, name) {
+async function loadEntityCard(container, name, forcedType = null) {
   const panel = container.querySelector('#entity-panel');
   if (!panel) return;
 
@@ -431,14 +582,19 @@ async function loadEntityCard(container, name) {
     if (res.ok) info = await res.json();
   } catch { /* fall through to regex fallback */ }
 
-  const isMgr = info
-    ? info.type === 'manager'
-    : /manager|coach|head coach|managed|coaching/i.test(extract);
+  const isMgr = forcedType === 'manager'
+    ? true
+    : info && info.type !== 'unknown'
+      ? info.type === 'manager'
+      : /manager|coach|head coach|managed|coaching/i.test(extract);
 
   const labelEl = container.querySelector('#result-right-label');
   if (labelEl) {
-    labelEl.textContent = isMgr ? t('manager_info') : t('player_info');
-    labelEl.style.display = 'block';
+    const icon = isMgr
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18"/><path d="M9 4v5"/></svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>`;
+    labelEl.innerHTML = `${icon}<span>${isMgr ? t('manager_info') : t('player_info')}</span>`;
+    labelEl.style.display = 'flex';
   }
 
   panel.innerHTML = isMgr
@@ -509,15 +665,14 @@ function buildPlayerCard(name, wikiData, extract, initials, info = null) {
           </a>
         </div>
         <span class="entity-type-badge player-badge">Player</span>
+      </div>
 
-        <div class="entity-stats">
-          ${rows.map(r => `
-            <div class="entity-stat">
-              <span class="es-label">${r.label}</span>
-              <span class="es-val" ${r.color ? `style="color:${r.color};font-weight:600"` : ''}>${r.val}</span>
-            </div>
-          `).join('')}
-        </div>
+      <div class="entity-stats">
+        ${rows.map(r => `
+          <div class="entity-stat">            <span class="es-label">${r.label}</span>
+            <span class="es-val" ${r.color ? `style="color:${r.color};font-weight:600"` : ''}>${r.val}</span>
+          </div>
+        `).join('')}
       </div>
     </div>
   `;
@@ -564,15 +719,15 @@ function buildManagerCard(name, wikiData, extract, initials, info = null) {
           </a>
         </div>
         <span class="entity-type-badge manager-badge">Manager</span>
+      </div>
 
-        <div class="entity-stats">
-          ${rows.map(r => `
-            <div class="entity-stat">
-              <span class="es-label">${r.label}</span>
-              <span class="es-val">${r.val}</span>
-            </div>
-          `).join('')}
-        </div>
+      <div class="entity-stats">
+        ${rows.map(r => `
+          <div class="entity-stat">
+            <span class="es-label">${r.label}</span>
+            <span class="es-val">${r.val}</span>
+          </div>
+        `).join('')}
       </div>
     </div>
   `;

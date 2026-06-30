@@ -15,8 +15,12 @@ Be direct. Be specific. Use player names when you have them.
 No fluff, no disclaimers, no AI-speak.
 Tone: sharp, energetic, confident — like a great ESPN anchor breaking down the game.
 
-For the TL;DR: 2 punchy sentences max. The gut-punch verdict.
-For the Full Narrative: 4-6 sentences. Cover the key moments, who stepped up, who failed, and what it means — enough for a fan who didn't watch to feel like they were there. Not a stats dump. Storytelling with teeth.
+CRITICAL — NAME PLAYERS, NOT GROUPS:
+Never write vague group descriptions like "Ghana's players", "their midfielders", "the defense".
+Always name specific individuals. If you know the squad, name them. If attacking broke down — name the striker. If defense failed — name the defenders. Use real names from your football knowledge.
+
+For the TL;DR: 2 punchy sentences max. The gut-punch verdict. Name at least one specific player.
+For the Full Narrative: 4-6 sentences. Name specific players in every key moment — who scored, who failed, who dominated. A fan who didn't watch should know exactly which players decided this match.
 
 CRITICAL — MANAGERS vs PLAYERS:
 Managers/coaches stand on the touchline. They do NOT score goals, make assists, shoot, dribble, or play on the pitch. NEVER credit a manager with any playing action.
@@ -82,7 +86,7 @@ Respond in EXACTLY this format — two blocks, nothing else before or after:
 
 TLDR: [2 punchy sentences. The core verdict — what specifically won {winner} this match.]
 
-NARRATIVE: [4-6 sentences. Key moments, who delivered for {winner}, how the match unfolded, what {loser} couldn't handle. Name players. Make it feel like you watched it live.]"""
+NARRATIVE: [4-6 sentences. Name specific players — who delivered for {winner}, what moments turned it, what {loser} couldn't stop. Make it feel like you watched it live. No vague group phrases.]"""
 
 
 def why_loser(match: dict) -> str:
@@ -97,7 +101,7 @@ Respond in EXACTLY this format — two blocks, nothing else before or after:
 
 TLDR: [2 punchy sentences. The brutal verdict on {loser}'s failure.]
 
-NARRATIVE: [4-6 sentences. What went wrong for {loser}, when it went wrong, who failed to deliver, and what {winner} exploited. Name players. Be honest and specific.]"""
+NARRATIVE: [4-6 sentences. Name specific players — who failed, when it went wrong, what {winner} exploited. Name the defender who was caught out, the striker who missed. Be honest and specific.]"""
 
 
 def who_dominated(match: dict) -> str:
@@ -115,7 +119,7 @@ Respond in EXACTLY this format — two blocks, nothing else before or after:
 
 TLDR: [2 punchy sentences. Name them and exactly what they did that mattered most.]
 
-NARRATIVE: [4-6 sentences. How they shifted the game — specific moments, actions, influence on the scoreline. If it was a team collective effort, say that and explain why no individual stands above the rest.]"""
+NARRATIVE: [4-6 sentences. Name the player and exactly how they shifted the game — specific moments, passes, goals, defensive acts. If it was a team collective effort, name 2-3 players who each contributed.]"""
 
 
 def who_underperformed(match: dict) -> str:
@@ -138,7 +142,7 @@ def who_underperformed(match: dict) -> str:
 
 TLDR: [2 punchy sentences. Name the team or player unit that failed to deliver.]
 
-NARRATIVE: [4-6 sentences. What was expected vs what they delivered. Missed chances, poor decisions, defensive errors — be specific. Name names.]"""
+NARRATIVE: [4-6 sentences. Name specific players who failed to deliver — the striker who missed, the midfielder who lost possession, the defender who was exposed. What was expected vs what they gave. Be specific, name names.]"""
 
 
 def what_if(match: dict) -> str:
@@ -189,3 +193,43 @@ NARRATIVE: [4-6 sentences. Dig into it — context, players, moments, why it mat
 
 QUESTION_MAP["custom"] = lambda match: ""  # placeholder — custom_question_prompt used directly
 DRAW_ALLOWED.add("custom")
+
+
+# ── Preview prompt ────────────────────────────────────────────
+def preview_match(home: str, away: str, stage: str, date: str, language: str) -> str:
+    lang_note = ""
+    if language.lower() != "english":
+        lang_note = f"\n\nRespond entirely in {language}. All field values in {language}. Do not use English."
+
+    return f"""You are ROOSTER — a sharp football analyst. Two teams are about to face each other at the FIFA World Cup 2026.
+You have no match data — only team names, stage, and date. Draw on your deep knowledge of these nations' football history, style, and current squads.
+
+MATCH: {home} vs {away} | {stage} | {date}
+
+Respond in EXACTLY this JSON format — no markdown, no extra text, only the JSON object:
+
+{{
+  "headline": "A sharp 10-15 word headline capturing what makes this match compelling. No score prediction.",
+  "h2h_exists": true or false,
+  "h2h_snippet": "One sentence on last memorable World Cup meeting — result, year, context. Empty string if no prior World Cup meeting.",
+  "team_home": {{
+    "style": "How {home} play — their philosophy in one sentence.",
+    "danger": "Their biggest attacking threat or strength — one sentence.",
+    "weakness": "Their genuine vulnerability — one honest sentence.",
+    "manager": "Current manager full name, or empty string if unknown."
+  }},
+  "team_away": {{
+    "style": "How {away} play — their philosophy in one sentence.",
+    "danger": "Their biggest attacking threat or strength — one sentence.",
+    "weakness": "Their genuine vulnerability — one honest sentence.",
+    "manager": "Current manager full name, or empty string if unknown."
+  }},
+  "tactical_contrast": "One sentence on how these two styles collide — what the chess match looks like.",
+  "unmissable_storyline": "2-3 sentences. The emotional, cultural, or historical stakes. What a neutral fan should care about. No prediction — pure context and tension.",
+  "players_to_watch": [
+    {{"name": "Full name", "team": "home", "role": "Position or Manager", "why": "One sentence — why they matter specifically against this opponent."}},
+    {{"name": "Full name", "team": "away", "role": "Position or Manager", "why": "One sentence — why they matter specifically against this opponent."}},
+    {{"name": "Full name", "team": "home", "role": "Position or Manager", "why": "One sentence — why they matter specifically against this opponent."}},
+    {{"name": "Full name", "team": "away", "role": "Position or Manager", "why": "One sentence — why they matter specifically against this opponent."}}
+  ]
+}}{lang_note}"""

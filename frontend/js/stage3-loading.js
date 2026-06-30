@@ -25,8 +25,34 @@ function getQuestionLabel(qtype, winner, loser) {
 
 export async function renderLoading(container, state, onNavigate) {
   const match = state.pinnedMatch;
+  if (!match) { onNavigate('hero'); return; }
+
+  // ── Preview flow ──────────────────────────────────────────────
+  if (state.isPreview) {
+    container.innerHTML = `
+      <div class="loading-body stage" id="loading-stage">
+        <div class="loading-question-wrap">
+          <div class="loading-question-label">Building Preview</div>
+          <div class="loading-question-text">${match.home} vs ${match.away}</div>
+          <div class="loading-match-meta">${match.stage || ''} · ${match.date || ''}</div>
+        </div>
+        <div class="loading-corner-bar">
+          <div class="loading-corner-track"></div>
+          <div class="loading-corner-fill" id="corner-fill"></div>
+        </div>
+        <div class="loading-pct" id="loading-pct">0%</div>
+        <div class="loading-wipe-yellow" id="wipe-yellow"></div>
+        <div class="loading-wipe-blue"   id="wipe-blue"></div>
+      </div>
+    `;
+    attachNavListeners(container, onNavigate);
+    await runPreview(container, state, onNavigate, match);
+    return;
+  }
+
+  // ── Standard analysis ─────────────────────────────────────────
   const qtype = state.selectedQuestion;
-  if (!match || !qtype) { onNavigate('hero'); return; }
+  if (!qtype) { onNavigate('hero'); return; }
 
   const winner = match.winner || match.home;
   const loser  = match.loser  || match.away;
@@ -91,6 +117,12 @@ async function runAnalysis(container, state, onNavigate, match, qtype, customQue
   state.analysisResult  = apiResult;
   state.isCustomQA      = qtype === 'custom';
   state.customQuestion  = customQuestion;
+  // Sync to window._roosterState so app.js navigate() doesn't wipe it out
+  if (window._roosterState) {
+    window._roosterState.analysisResult = apiResult;
+    window._roosterState.isCustomQA     = qtype === 'custom';
+    window._roosterState.customQuestion = customQuestion;
+  }
   onNavigate('result');
 }
 
@@ -114,6 +146,68 @@ function wipeTransition(container) {
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Preview runner ────────────────────────────────────────────
+async function runPreview(container, state, onNavigate, match) {
+  let pct     = 0;
+  let apiDone = false;
+
+  const fillEl = container.querySelector('#corner-fill');
+  const pctEl  = container.querySelector('#loading-pct');
+  if (pctEl) pctEl.style.opacity = '1';
+
+  const interval = setInterval(() => {
+    if (apiDone) return;
+    const step = 1.5 + Math.random() * 3;
+    pct = Math.min(92, pct + step);
+    setBar(fillEl, pctEl, pct);
+  }, 120);
+
+  const apiResult = await callPreview(match);
+  apiDone = true;
+  clearInterval(interval);
+
+  pct = 100;
+  setBar(fillEl, pctEl, 100);
+
+  await delay(400);
+  await wipeTransition(container);
+
+  state.previewResult = apiResult;
+  state.isPreview     = false;
+  // Sync to window._roosterState so app.js navigate() doesn't wipe it out
+  if (window._roosterState) {
+    window._roosterState.previewResult = apiResult;
+    window._roosterState.isPreview     = false;
+  }
+  onNavigate('preview-result');
+}
+
+// ── Preview API call ──────────────────────────────────────────
+async function callPreview(match) {
+  try {
+    const body = {
+      home:     match.home,
+      away:     match.away,
+      date:     match.date  || '',
+      stage:    match.stage || '',
+      language: getApiLang(),
+    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+    const res = await fetch(`${API_BASE}/preview`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+      signal:  controller.signal,
+    });
+    clearTimeout(timeout);
+    return await res.json();
+  } catch (err) {
+    console.error('Preview error:', err);
+    return { error: true, headline: 'Preview unavailable. Check backend is running on :8000.' };
+  }
+}
 
 // ── API call ──────────────────────────────────────────────────
 async function callAnalyze(match, qtype, customQuestion) {

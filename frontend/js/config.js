@@ -228,19 +228,18 @@ export async function fetchWikiData(name, requireFootballer = false) {
     } catch { return null; }
   };
 
-  // ── search API fallback — returns best-match title or null ────
-  const searchWiki = async (query) => {
+  // ── search API fallback — returns up to N candidate titles ────
+  const searchWiki = async (query, limit = 5) => {
     try {
       const url =
         `https://en.wikipedia.org/w/api.php?` +
         `action=query&list=search&srsearch=${encodeURIComponent(query)}` +
-        `&srnamespace=0&srlimit=3&format=json&origin=*`;
+        `&srnamespace=0&srlimit=${limit}&format=json&origin=*`;
       const res = await fetch(url);
-      if (!res.ok) return null;
+      if (!res.ok) return [];
       const d = await res.json();
-      const hit = d?.query?.search?.[0];
-      return hit ? hit.title : null;
-    } catch { return null; }
+      return (d?.query?.search || []).map(h => h.title);
+    } catch { return []; }
   };
 
   // ── shape result ──────────────────────────────────────────────
@@ -255,18 +254,34 @@ export async function fetchWikiData(name, requireFootballer = false) {
     // 1. Direct lookup
     let d = await fetchSummary(toSlug(name));
 
-    // 2. Search fallback — always try if direct miss, regardless of
-    //    whether the returned title looks the same (encoding may differ)
+    // 2. Direct hit but fails the football gate (e.g. wrong namesake at the
+    //    exact slug) — don't trust it blindly, fall through to disambiguation.
+    if (d && requireFootballer && !FOOTBALL_RE.test(d.extract)) d = null;
+
+    // 3. Search fallback — try a football-biased query first so a same-named
+    //    footballer doesn't get buried under a more famous non-footballer.
+    //    Check EVERY candidate against the football gate, not just the top hit.
     if (!d) {
-      const found = await searchWiki(name);
-      if (found) {
-        d = await fetchSummary(toSlug(found));
+      const queries = requireFootballer
+        ? [`${name} footballer`, `${name} football manager`, name]
+        : [name];
+
+      outer:
+      for (const q of queries) {
+        const candidates = await searchWiki(q);
+        for (const candidate of candidates) {
+          const candDoc = await fetchSummary(toSlug(candidate));
+          if (!candDoc) continue;
+          if (requireFootballer && !FOOTBALL_RE.test(candDoc.extract)) continue;
+          d = candDoc;
+          break outer;
+        }
       }
     }
 
     if (!d) return null;
 
-    // 3. Footballer gate (relaxed)
+    // 4. Final footballer gate (belt-and-braces — should already be satisfied above)
     if (requireFootballer && !FOOTBALL_RE.test(d.extract)) return null;
 
     return shape(d, name);
@@ -477,11 +492,11 @@ const UI_STRINGS = {
   },
   // ── Stage 2: CTA button ───────────────────────────────────────
   analyze_btn: {
-    en: 'Analyze →',         es: 'Analizar →',
-    fr: 'Analyser →',        ar: '← تحليل',
-    pt: 'Analisar →',        de: 'Analysieren →',
-    ko: '분석하기 →',          zh: '分析 →',
-    ja: '分析する →',          tr: 'Analiz Et →',
+    en: 'Analyze',        es: 'Analizar',
+    fr: 'Analyser',       ar: 'تحليل',
+    pt: 'Analisar',       de: 'Analysieren',
+    ko: '분석하기',         zh: '分析',
+    ja: '分析する',         tr: 'Analiz Et',
   },
   // ── Stage 2: "Too short" reject message ───────────────────────
   q_too_short: {
@@ -522,18 +537,56 @@ const UI_STRINGS = {
     ko: '질문 목록',        zh: '问题列表',
     ja: '質問一覧',         tr: 'Sorular',
   },
+  ask_again_btn: {
+    en: 'Ask Again',      es: 'Preguntar de nuevo',
+    fr: 'Redemander',     ar: 'اسأل مجدداً',
+    pt: 'Perguntar novamente', de: 'Nochmal fragen',
+    ko: '다시 질문하기',    zh: '再次提问',
+    ja: 'もう一度聞く',     tr: 'Tekrar Sor',
+  },
+  off_topic_msg: {
+    en: 'I only analyse football matches. Ask me something about this game.',
+    es: 'Solo analizo partidos de fútbol. Pregúntame algo sobre este partido.',
+    fr: 'Je n\'analyse que les matchs de football. Posez-moi une question sur ce match.',
+    ar: 'أنا أحلل مباريات كرة القدم فقط. اسألني شيئاً عن هذه المباراة.',
+    pt: 'Só analiso partidas de futebol. Pergunte-me algo sobre este jogo.',
+    de: 'Ich analysiere nur Fußballspiele. Frag mich etwas über dieses Spiel.',
+    ko: '저는 축구 경기만 분석합니다. 이 경기에 대해 질문해 주세요.',
+    zh: '我只分析足球比赛。请向我提问关于这场比赛的问题。',
+    ja: '私はサッカーの試合のみ分析します。この試合について質問してください。',
+    tr: 'Sadece futbol maçlarını analiz ederim. Bu maç hakkında bir şey sor.',
+  },
+  off_topic_hint: {
+    en: 'Try: tactics, players, goals, moments, decisions, "what if…"',
+    es: 'Prueba: tácticas, jugadores, goles, momentos, decisiones, "¿y si…?"',
+    fr: 'Essayez : tactiques, joueurs, buts, moments, décisions, "et si…"',
+    ar: 'جرب: التكتيكات، اللاعبين، الأهداف، اللحظات، القرارات، "ماذا لو…"',
+    pt: 'Tente: táticas, jogadores, gols, momentos, decisões, "e se…"',
+    de: 'Versuche: Taktik, Spieler, Tore, Momente, Entscheidungen, "was wäre wenn…"',
+    ko: '시도해 보세요: 전술, 선수, 골, 순간, 결정, "만약에…"',
+    zh: '试试：战术、球员、进球、关键时刻、决策、"如果…"',
+    ja: '試してみて：戦術、選手、ゴール、場面、決断、「もし…」',
+    tr: 'Dene: taktikler, oyuncular, goller, anlar, kararlar, "ya olsaydı…"',
+  },
+  preview_btn: {
+    en: 'Preview',        es: 'Vista previa',
+    fr: 'Aperçu',         ar: 'معاينة',
+    pt: 'Pré-estreia',    de: 'Vorschau',
+    ko: '프리뷰',           zh: '预览',
+    ja: 'プレビュー',        tr: 'Önizleme',
+  },
   // ── Stage 4: Sidebar label ────────────────────────────────────
   hover_hint: {
-    en: 'Hover a highlighted name to see their profile here.',
-    es: 'Pasa el cursor sobre un nombre para ver su perfil.',
-    fr: 'Survolez un nom en surbrillance pour voir son profil.',
-    ar: 'مرّر على اسم مضاء لعرض ملفه هنا.',
-    pt: 'Passe o mouse sobre um nome para ver o perfil.',
-    de: 'Fahre über einen markierten Namen für das Profil.',
-    ko: '강조된 이름에 마우스를 올려 프로필을 확인하세요.',
-    zh: '将鼠标悬停在高亮名称上以查看其资料。',
-    ja: 'ハイライトされた名前にカーソルを合わせてください。',
-    tr: 'Profili görmek için vurgulanan bir ismin üzerine gelin.',
+    en: 'Click a highlighted name to see their profile here.',
+    es: 'Haz clic en un nombre destacado para ver su perfil.',
+    fr: 'Cliquez sur un nom en surbrillance pour voir son profil.',
+    ar: 'انقر على اسم مضاء لعرض ملفه هنا.',
+    pt: 'Clique em um nome destacado para ver o perfil.',
+    de: 'Klicke auf einen markierten Namen für das Profil.',
+    ko: '강조된 이름을 클릭하여 프로필을 확인하세요.',
+    zh: '点击高亮名称以查看其资料。',
+    ja: 'ハイライトされた名前をクリックしてください。',
+    tr: 'Profili görmek için vurgulanan bir isme tıklayın.',
   },
   player_info: {
     en: 'Player Info',       es: 'Info del jugador',
@@ -643,6 +696,13 @@ const UI_STRINGS = {
     ko: '분석',         zh: '分析',
     ja: '分析',         tr: 'Analiz',
   },
+  nav_preview: {
+    en: 'Preview',    es: 'Vista previa',
+    fr: 'Aperçu',     ar: 'معاينة',
+    pt: 'Pré-estreia', de: 'Vorschau',
+    ko: '프리뷰',       zh: '预览',
+    ja: 'プレビュー',    tr: 'Önizleme',
+  },
   nav_tech: {
     en: 'Used Tech',  es: 'Tecnología',
     fr: 'Tech utilisée', ar: 'التقنية',
@@ -652,18 +712,18 @@ const UI_STRINGS = {
   },
   // ── Stage 1: Hero page ───────────────────────────────────────
   insight_btn: {
-    en: 'Insight',     es: 'Análisis',
-    fr: 'Analyse',     ar: 'تحليل',
-    pt: 'Análise',     de: 'Analyse',
-    ko: '분석',          zh: '洞察',
-    ja: '分析',          tr: 'Analiz',
+    en: 'Analyze',    es: 'Analizar',
+    fr: 'Analyser',   ar: 'تحليل',
+    pt: 'Analisar',   de: 'Analysieren',
+    ko: '분석',         zh: '分析',
+    ja: '分析する',      tr: 'Analiz Et',
   },
   analyze_match_btn: {
-    en: 'Analyze this Match →',      es: 'Analizar este partido →',
-    fr: 'Analyser ce match →',       ar: '← تحليل هذه المباراة',
-    pt: 'Analisar esta partida →',   de: 'Match analysieren →',
-    ko: '이 경기 분석하기 →',          zh: '分析此比赛 →',
-    ja: 'この試合を分析する →',        tr: 'Bu Maçı Analiz Et →',
+    en: 'Analyze',             es: 'Analizar',
+    fr: 'Analyser',            ar: 'تحليل',
+    pt: 'Analisar',            de: 'Analysieren',
+    ko: '분석하기',              zh: '分析',
+    ja: '分析する',              tr: 'Analiz Et',
   },
   upcoming_no_analysis: {
     en: 'Upcoming · No analysis yet',        es: 'Próximo · Sin análisis aún',
@@ -966,7 +1026,7 @@ export async function extractPlayerNamesFromBackend(text) {
  */
 // ── Per-name color assignment ─────────────────────────────────
 const NAME_COLORS = [
-  '#E8C547', // yellow-warm
+  '#E8C547', // warm yellow
   '#7EB8F7', // soft blue
   '#79E8A2', // mint green
   '#F7A07E', // soft orange
@@ -974,16 +1034,68 @@ const NAME_COLORS = [
   '#7EF7E8', // teal
   '#F77EAA', // soft pink
   '#B8E87E', // lime
+  '#F7D27E', // soft gold
+  '#9FA8F7', // periwinkle
+  '#7EE8C4', // seafoam
+  '#F78E7E', // coral
+  '#D17EF7', // orchid
+  '#7ED4F7', // sky blue
+  '#E8A87E', // tan/copper
+  '#A8E87E', // light green
+  '#F77EE0', // magenta-pink
+  '#7EF7A0', // spring green
 ];
 
-function nameColor(name) {
+function hashName(name) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return NAME_COLORS[hash % NAME_COLORS.length];
+  return hash;
+}
+
+// Fallback single-name lookup (used when no per-render map is available)
+function nameColor(name) {
+  return NAME_COLORS[hashName(name) % NAME_COLORS.length];
+}
+
+/**
+ * Build a name → color map for one render pass, assigning colors in
+ * order of first appearance so distinct names never collide (as long
+ * as there are fewer names than colors in the palette).
+ */
+function assignNameColors(names) {
+  const map = new Map();
+  let i = 0;
+  for (const name of names) {
+    if (map.has(name)) continue;
+    map.set(name, NAME_COLORS[i % NAME_COLORS.length]);
+    i++;
+  }
+  return map;
+}
+
+/**
+ * Remove any name that is wholly contained inside another (longer) name
+ * in the list — e.g. drop "Minamino" if "Takumi Minamino" is also present.
+ * Without this, highlighting the short name can match text sitting inside
+ * the long name's already-inserted data-name="..." attribute, corrupting
+ * the markup. We'd rather skip highlighting the short form than risk that.
+ */
+function dropSubsumedNames(names) {
+  const unique = [...new Set(names)];
+  return unique.filter(name => {
+    const lower = name.toLowerCase();
+    return !unique.some(other =>
+      other !== name &&
+      other.toLowerCase().includes(lower) &&
+      // tie-break equal-length duplicates deterministically so neither drops the other
+      (other.length > name.length || (other.length === name.length && other > name))
+    );
+  });
 }
 
 export async function highlightPlayersAsync(text, names) {
   if (!names.length) return escapeHtml(text);
+  names = dropSubsumedNames(names); // dedupe + drop names contained inside a longer name
 
   // Validate all names concurrently
   const validations = await Promise.all(
@@ -997,6 +1109,7 @@ export async function highlightPlayersAsync(text, names) {
   if (!validNames.length) return escapeHtml(text);
 
   const sorted = [...validNames].sort((a, b) => b.length - a.length);
+  const colorMap = assignNameColors(validNames);
   let result = escapeHtml(text);
 
   for (const name of sorted) {
@@ -1006,8 +1119,9 @@ export async function highlightPlayersAsync(text, names) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`(?<![\\p{L}\\p{N}'])${escaped}(?![\\p{L}\\p{N}'])`, 'gu');
     const url = wikiUrl(name);
+    const color = colorMap.get(name) || nameColor(name);
     result = result.replace(re,
-      `<span class="player-hl" data-name="${name}" style="color:${nameColor(name)}">` +
+      `<span class="player-hl" data-name="${name}" style="color:${color}">` +
         name +
         `<a href="${url}" target="_blank" rel="noopener" class="hl-link" title="Wikipedia">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>` +
@@ -1021,14 +1135,17 @@ export async function highlightPlayersAsync(text, names) {
 /** Synchronous fallback — no validation, use when already validated */
 export function highlightPlayers(text, names) {
   if (!names.length) return text;
+  names = dropSubsumedNames(names); // dedupe + drop names contained inside a longer name
   const sorted = [...names].sort((a, b) => b.length - a.length);
+  const colorMap = assignNameColors(names);
   let result = text;
   for (const name of sorted) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`(?<![\\p{L}\\p{N}'])${escaped}(?![\\p{L}\\p{N}'])`, 'gu');
     const url = wikiUrl(name);
+    const color = colorMap.get(name) || nameColor(name);
     result = result.replace(re,
-      `<span class="player-hl" data-name="${name}" style="color:${nameColor(name)}">` +
+      `<span class="player-hl" data-name="${name}" style="color:${color}">` +
         name +
         `<a href="${url}" target="_blank" rel="noopener" class="hl-link" title="Wikipedia">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>` +
@@ -1056,6 +1173,7 @@ export function escapeHtml(str) {
  */
 export async function highlightPlayersDeduped(tldr, full, names) {
   if (!names.length) return { tldrHl: escapeHtml(tldr), fullHl: escapeHtml(full) };
+  names = dropSubsumedNames(names); // dedupe + drop names contained inside a longer name
 
   // 1. Validate all names against Wikipedia (same as highlightPlayersAsync)
   const validations = await Promise.all(
@@ -1069,6 +1187,7 @@ export async function highlightPlayersDeduped(tldr, full, names) {
 
   // Sort longest first to avoid partial matches
   const sorted = [...validNames].sort((a, b) => b.length - a.length);
+  const colorMap = assignNameColors(validNames);
 
   // 2. Track which names have already been linked (first-occurrence wins)
   const linked = new Set();
@@ -1079,6 +1198,7 @@ export async function highlightPlayersDeduped(tldr, full, names) {
       const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const re = new RegExp(`(?<![\\p{L}\\p{N}'])${escaped}(?![\\p{L}\\p{N}'])`, 'gu');
       const url = wikiUrl(name);
+      const color = colorMap.get(name) || nameColor(name);
       const alreadyLinked = linked.has(name);
 
       // Replace all occurrences in this block; track if we link this pass
@@ -1089,7 +1209,7 @@ export async function highlightPlayersDeduped(tldr, full, names) {
           firstInBlock = false;
           linked.add(name);
           return (
-            `<span class="player-hl" data-name="${name}" style="color:${nameColor(name)}">` +
+            `<span class="player-hl" data-name="${name}" style="color:${color}">` +
               name +
               `<a href="${url}" target="_blank" rel="noopener" class="hl-link" title="Wikipedia">` +
                 `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>` +
@@ -1098,7 +1218,7 @@ export async function highlightPlayersDeduped(tldr, full, names) {
           );
         }
         // Subsequent occurrence — hoverable span, NO link icon
-        return `<span class="player-hl player-hl-repeat" data-name="${name}" style="color:${nameColor(name)}">${name}</span>`;
+        return `<span class="player-hl player-hl-repeat" data-name="${name}" style="color:${color}">${name}</span>`;
       });
     }
     return result;

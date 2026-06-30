@@ -53,9 +53,6 @@ export function renderInsight(container, state, onNavigate) {
           </div>
         </div>
         <button class="btn-back" id="change-match-btn" aria-label="Change match">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
           Change Match
         </button>
       </div>
@@ -211,7 +208,7 @@ function buildQTab(match, type, winner, loser, isDraw) {
       <span class="q-tab-sub">${isBlocked ? t('draw_match') : d.sub}</span>
       ${isBlocked
         ? `<span class="q-blocked-badge">${t('draw_match')}</span>`
-        : `<span class="q-tab-arrow" aria-hidden="true">→</span>`}
+        : ``}
     </div>
   `;
 }

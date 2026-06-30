@@ -8,6 +8,7 @@ import { renderHero }    from './js/stage1-hero.js';
 import { renderInsight } from './js/stage2-insight.js';
 import { renderLoading } from './js/stage3-loading.js';
 import { renderResult, renderTech } from './js/stage4-result.js';
+import { renderPreview } from './js/stage5-preview.js';
 import { setCurrentLang, getCurrentLang, LANGUAGES } from './js/config.js';
 import { mountNav, mountTicker, updateNavActive, updateTicker } from './js/nav.js';
 
@@ -16,7 +17,9 @@ const state = {
   pinnedMatch:      null,
   selectedQuestion: null,
   analysisResult:   null,
+  previewResult:    null,
   isCustomQA:       false,
+  isPreview:        false,
 };
 
 // Restore from session (e.g. on page refresh mid-session)
@@ -38,15 +41,26 @@ function getEnterClass(from, to) {
   return 'page-enter';
 }
 
+function getNavState() {
+  const m = state.pinnedMatch;
+  return {
+    // Analysis only makes sense for finished matches (has a score)
+    hasAnalysis: !!(m && m.score_home != null),
+    // Preview only makes sense after a preview has been fetched
+    hasPreview:  !!(state.previewResult),
+  };
+}
+
 function renderStage(stage, enterClass) {
   app.innerHTML = '';
   switch (stage) {
-    case 'hero':    renderHero(app, state, navigate);    break;
-    case 'insight': renderInsight(app, state, navigate); break;
-    case 'loading': renderLoading(app, state, navigate); break;
-    case 'result':  renderResult(app, state, navigate);  break;
-    case 'tech':    renderTech(app, state, navigate);    break;
-    default:        renderHero(app, state, navigate);
+    case 'hero':           renderHero(app, state, navigate);    break;
+    case 'insight':        renderInsight(app, state, navigate); break;
+    case 'loading':        renderLoading(app, state, navigate); break;
+    case 'result':         renderResult(app, state, navigate);  break;
+    case 'tech':           renderTech(app, state, navigate);    break;
+    case 'preview-result': renderPreview(app, state, navigate); break;
+    default:               renderHero(app, state, navigate);
   }
   const stageEl = app.querySelector('.stage');
   if (stageEl && enterClass) {
@@ -54,7 +68,17 @@ function renderStage(stage, enterClass) {
     stageEl.addEventListener('animationend', () => stageEl.classList.remove(enterClass), { once: true });
   }
   currentStageName = stage;
-  updateNavActive(stage);
+
+  // Map internal stage names to nav link data-nav values
+  const stageToNav = {
+    'hero':           'hero',
+    'insight':        'insight',
+    'loading':        'loading',
+    'result':         'insight',   // result is under Analysis
+    'tech':           'tech',
+    'preview-result': 'preview',   // preview-result is under Preview
+  };
+  updateNavActive(stageToNav[stage] ?? stage, getNavState());
   isTransitioning  = false;
 
   // Show watermark only on tech + loading stages
@@ -107,8 +131,9 @@ document.addEventListener('rooster:lang-change', onLangChange);
 
 // Boot — run intro every time, then start the app
 runIntro(() => {
-  mountNav(navigate);
+  const shell = document.getElementById('nav-shell');
+  if (shell) shell._onNavigate = navigate;
+  mountNav(navigate, getNavState());
   mountTicker([]);
   navigate('hero');
 });
-

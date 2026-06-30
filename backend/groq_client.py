@@ -14,7 +14,8 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 MODEL        = "llama-3.3-70b-versatile"
 FALLBACK     = "llama-3.1-8b-instant"
-MAX_TOKENS   = 500  # bumped from 350 — custom questions may need more room
+MAX_TOKENS         = 800   # raised: 500 was too short for 4-6 sentence narratives with player names
+MAX_TOKENS_PREVIEW = 2000  # preview JSON is large (2 team blocks + players + storyline)
 
 
 def is_football_question(question: str) -> bool:
@@ -116,8 +117,32 @@ def _call(system: str, user_prompt: str, model: str) -> str:
         return f"Analysis unavailable right now (API error {res.status_code}). Try again in a moment."
     return res.json()["choices"][0]["message"]["content"].strip()
 
+def _call_preview(system: str, user_prompt: str) -> str:
+    """Same as _call but with MAX_TOKENS_PREVIEW — preview JSON is too large for the default limit."""
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+    payload = {
+        "model":       MODEL,
+        "messages":    [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user_prompt},
+        ],
+        "temperature": 0.7,
+        "max_tokens":  MAX_TOKENS_PREVIEW,
+    }
+    res = requests.post(GROQ_URL, headers=headers, json=payload, timeout=45)
+    if res.status_code == 429:
+        time.sleep(12)
+        res = requests.post(GROQ_URL, headers=headers, json=payload, timeout=45)
+    if not res.ok:
+        return f'{{"error":true,"headline":"API error {res.status_code}"}}'
+    return res.json()["choices"][0]["message"]["content"].strip()
+
+
 def extract_names(text: str) -> list[str]:
-    """Lightweight Groq call to extract footballer/manager full names from analysis text.
+    """Lightweight Groq call to extract individual footballer/manager full names from analysis text.
     Uses 8b-instant (cheapest/fastest) with max_tokens=80 — minimal token cost."""
     payload = {
         "model": "llama-3.1-8b-instant",
@@ -125,11 +150,17 @@ def extract_names(text: str) -> list[str]:
             {
                 "role": "system",
                 "content": (
-                    "You extract names of footballers and managers from text. "
-                    "Return ONLY a comma-separated list of full names exactly as they appear. "
+                    "You extract INDIVIDUAL footballer and manager full names from text. "
+                    "Return ONLY a comma-separated list of real person full names exactly as they appear. "
+                    "STRICT RULES — never include: "
+                    "team names (e.g. 'Ghana', 'Croatia'), "
+                    "group phrases (e.g. 'Ghana's players', 'Croatian midfielders', 'their defenders'), "
+                    "possessives (anything with 's or of), "
+                    "collective nouns (players, team, squad, defense, attack, forwards, midfielders, defenders, goalkeeper), "
+                    "any phrase longer than 3 words. "
+                    "ONLY include proper names of specific individual people like: Lionel Messi, Luka Modric, Hansi Flick. "
                     "No explanation, no numbering, no punctuation other than commas. "
-                    "Include hyphenated names (Al-Hussein), accented names (Éló), prefixes (De Bruyne, Van Dijk). "
-                    "If no names found, return empty string."
+                    "If no individual names found, return empty string."
                 )
             },
             {"role": "user", "content": text}
@@ -147,7 +178,32 @@ def extract_names(text: str) -> list[str]:
         raw = res.json()["choices"][0]["message"]["content"].strip()
         if not raw:
             return []
-        return [n.strip() for n in raw.split(",") if n.strip()]
+        names = [n.strip() for n in raw.split(",") if n.strip()]
+        # Client-side safety filter: reject anything with possessives, plurals of group nouns,
+        # or more than 4 words (no individual has a 5-word name in football context)
+        GROUP_WORDS = {
+            'players','player','team','squad','defense','defence','attack','midfielders',
+            'midfielder','defenders','defender','goalkeeper','forwards','forward','strikers',
+            'striker','backline','lineup','side','nation','nationals','stars','black',
+        }
+        filtered = []
+        for name in names:
+            low = name.lower()
+            # Reject possessives
+            if "'s" in low or "s'" in low:
+                continue
+            # Reject if any word is a group noun
+            words = low.split()
+            if any(w in GROUP_WORDS for w in words):
+                continue
+            # Reject if too many words (> 4)
+            if len(words) > 4:
+                continue
+            # Reject single-word entries (not a full name)
+            if len(words) < 2:
+                continue
+            filtered.append(name)
+        return filtered
     except Exception:
         return []  # fail silently — frontend falls back to regex
 
@@ -169,10 +225,17 @@ def extract_entity_info(name: str, extract: str) -> dict:
     )
     rules = (
         "Rules: "
-        "type=manager if they currently coach/manage a team, else type=player. "
+        "type=manager ONLY if the text explicitly states they currently coach/manage a team "
+        "(e.g. 'is the manager of', 'head coach of', 'appointed manager'). "
+        "type=player if the text describes them as an active or former footballer with no current "
+        "managerial role stated. "
+        "If the text is ambiguous, contradictory, or doesn't clearly support either role with direct "
+        "evidence, do NOT guess — set type to \"unknown\" instead of forcing player or manager. "
+        "Never infer type from name, team, or context outside the given text. "
         "club: players only — just the club name, never a league, never includes and/who/national. "
         "currently_manages: managers only — the team they manage RIGHT NOW, not clubs they played for. "
-        "awards: real trophies or individual honours won — NOT leagues they merely play in. "
+        "awards: real trophies or individual honours that are explicitly named in the text — never invent "
+        "or assume awards that aren't directly stated. "
         "Empty string for unknown/not-applicable fields. Return ONLY the JSON object, nothing else."
     )
     payload = {

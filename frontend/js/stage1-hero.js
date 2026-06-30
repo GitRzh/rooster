@@ -201,7 +201,18 @@ function renderUpcoming(container, matches, onNavigate) {
   if (!matches.length) { el.innerHTML = emptyState('No upcoming matches scheduled'); return; }
 
   if (countEl) countEl.textContent = matches.length;
-  el.innerHTML = matches.map(m => matchCard(m, 'sch')).join('');
+  el.innerHTML = matches.map(m => matchCard(m, 'preview')).join('');
+
+  // Wire preview buttons
+  el.querySelectorAll('.match-card').forEach((card, i) => {
+    const btn = card.querySelector('.btn-preview.mc-btn');
+    if (btn) {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        goPreview(matches[i], onNavigate);
+      });
+    }
+  });
 
   setTimeout(() => attachScrollFade(container, '#upcoming-list', '#upcoming-fade'), 50);
 }
@@ -304,7 +315,7 @@ function renderFeatured(container, match, isPinned, onNavigate) {
         <div class="featured-info">${match.stage || ''}${match.date ? ' · ' + match.date : ''}</div>
         ${hasScore
           ? `<button class="btn-featured-insight" id="featured-insight-btn">${t('analyze_match_btn')}</button>`
-          : `<button class="btn-sch btn-full" disabled>${t('upcoming_no_analysis')}</button>`}
+          : `<button class="btn-featured-preview" id="featured-preview-btn">${t('preview_btn')}</button>`}
       </div>
     </div>
   `;
@@ -315,6 +326,13 @@ function renderFeatured(container, match, isPinned, onNavigate) {
       window._roosterState = window._roosterState || {};
       window._roosterState.pinnedMatch = match;
       onNavigate('insight');
+    });
+  }
+
+  const pvBtn = wrap.querySelector('#featured-preview-btn');
+  if (pvBtn) {
+    pvBtn.addEventListener('click', () => {
+      goPreview(match, onNavigate);
     });
   }
 }
@@ -523,7 +541,7 @@ function matchCard(m, btnType, isPinned = false) {
 
   const btn = btnType === 'insight'
     ? `<button class="btn-insight mc-btn" aria-label="Insight for ${m.home} vs ${m.away}">${t('insight_btn')}</button>`
-    : `<button class="btn-sch mc-btn" aria-label="Scheduled: ${m.home} vs ${m.away}">TBD</button>`;
+    : `<button class="btn-preview mc-btn" aria-label="Preview: ${m.home} vs ${m.away}">${t('preview_btn')}</button>`;
 
   return `
     <div class="match-card" data-id="${m.id}" role="button" tabindex="0" aria-label="${m.home} vs ${m.away}">
@@ -556,9 +574,22 @@ function matchCard(m, btnType, isPinned = false) {
 
 // ── Navigation helper ─────────────────────────────────────────
 function goInsight(match, state, onNavigate) {
-  state.pinnedMatch = match;
+  state.pinnedMatch    = match;
+  state.analysisResult = null;   // clear old result for new match
+  state.previewResult  = null;   // upcoming match preview no longer relevant
+  state.isPreview      = false;
   window._roosterState = state;
   onNavigate('insight');
+}
+
+function goPreview(match, onNavigate) {
+  const s = window._roosterState || {};
+  s.pinnedMatch    = match;
+  s.isPreview      = true;
+  s.previewResult  = null;   // always fetch fresh for the new match
+  s.analysisResult = null;   // finished match analysis no longer relevant
+  window._roosterState = s;
+  onNavigate('loading');
 }
 
 // ── Scroll fade helper ─────────────────────────────────────────
@@ -760,7 +791,7 @@ function renderCalendarDateMatches(container, matches, onNavigate) {
       : `<div class="cal-m-flag flag-placeholder"></div>`;
 
     return `
-      <div class="cal-match-row${hasScore ? ' cal-match-clickable' : ' cal-match-upcoming'}" data-id="${m.id}">
+      <div class="cal-match-row cal-match-clickable${hasScore ? '' : ' cal-match-upcoming'}" data-id="${m.id}">
         <div class="cal-match-stage">${m.stage || ''}</div>
         <div class="cal-match-teams">
           ${hFlagHtml}
@@ -771,20 +802,38 @@ function renderCalendarDateMatches(container, matches, onNavigate) {
         </div>
         ${hasScore
           ? `<div class="cal-match-status cal-status-done">FINISHED</div>`
-          : `<div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>`}
+          : `<div class="cal-match-status-row">
+               <button class="cal-match-status cal-status-preview" data-preview-id="${m.id}" type="button">PREVIEW</button>
+               <div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>
+             </div>`}
       </div>
     `;
   }).join('');
 
-  // Click to go to insight
+  // Click row: finished → insight, upcoming → preview
   el.querySelectorAll('.cal-match-clickable').forEach(row => {
     const m = matches.find(x => String(x.id) === row.dataset.id);
     if (!m) return;
     row.addEventListener('click', () => {
       closeCalendar(container);
-      window._roosterState = window._roosterState || {};
-      window._roosterState.pinnedMatch = m;
-      onNavigate('insight');
+      if (m.score_home != null) {
+        window._roosterState = window._roosterState || {};
+        window._roosterState.pinnedMatch = m;
+        onNavigate('insight');
+      } else {
+        goPreview(m, onNavigate);
+      }
+    });
+  });
+
+  // Click PREVIEW button on upcoming matches
+  el.querySelectorAll('.cal-status-preview').forEach(btn => {
+    const m = matches.find(x => String(x.id) === btn.dataset.previewId);
+    if (!m) return;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      closeCalendar(container);
+      goPreview(m, onNavigate);
     });
   });
 
@@ -850,7 +899,7 @@ function renderCalendarSearchResults(container, onNavigate) {
     const aFlagHtml = af ? `<img src="${af}" alt="${m.away}" class="cal-m-flag" onerror="this.style.display='none'">` : `<div class="cal-m-flag flag-placeholder"></div>`;
 
     return `
-      <div class="cal-match-row${hasScore ? ' cal-match-clickable' : ' cal-match-upcoming'}" data-id="${m.id}">
+      <div class="cal-match-row cal-match-clickable${hasScore ? '' : ' cal-match-upcoming'}" data-id="${m.id}">
         <div class="cal-match-stage">${m.stage || ''} · ${m.date || ''}</div>
         <div class="cal-match-teams">
           ${hFlagHtml}
@@ -861,7 +910,10 @@ function renderCalendarSearchResults(container, onNavigate) {
         </div>
         ${hasScore
           ? `<div class="cal-match-status cal-status-done">FINISHED</div>`
-          : `<div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>`}
+          : `<div class="cal-match-status-row">
+               <button class="cal-match-status cal-status-preview" data-preview-id="${m.id}" type="button">PREVIEW</button>
+               <div class="cal-match-status cal-status-upcoming">${m.time || 'TBD'}</div>
+             </div>`}
       </div>
     `;
   }).join('');
@@ -871,9 +923,24 @@ function renderCalendarSearchResults(container, onNavigate) {
     if (!m) return;
     row.addEventListener('click', () => {
       closeCalendar(container);
-      window._roosterState = window._roosterState || {};
-      window._roosterState.pinnedMatch = m;
-      onNavigate('insight');
+      if (m.score_home != null) {
+        window._roosterState = window._roosterState || {};
+        window._roosterState.pinnedMatch = m;
+        onNavigate('insight');
+      } else {
+        goPreview(m, onNavigate);
+      }
+    });
+  });
+
+  // Click PREVIEW button on upcoming matches
+  el.querySelectorAll('.cal-status-preview').forEach(btn => {
+    const m = results.find(x => String(x.id) === btn.dataset.previewId);
+    if (!m) return;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      closeCalendar(container);
+      goPreview(m, onNavigate);
     });
   });
 

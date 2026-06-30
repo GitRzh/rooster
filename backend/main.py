@@ -20,6 +20,7 @@ from org_client import get_live, get_today, get_upcoming, get_yesterday, get_two
 from analyzer import analyze
 from groq_client import extract_names, extract_entity_info
 import asyncio
+import logging
 import cache
 from org_client import get_live, get_today, get_upcoming, get_yesterday, get_two_days_ago, get_calendar
 
@@ -54,6 +55,13 @@ class ExtractNamesRequest(BaseModel):
 class ExtractEntityRequest(BaseModel):
     name:    str
     extract: str
+
+class PreviewRequest(BaseModel):
+    home:     str
+    away:     str
+    date:     str = ""
+    stage:    str = ""
+    language: str = "English"
 
 
 # ─── HERO PAGE ────────────────────────────────────────────────
@@ -159,6 +167,100 @@ def analyze_match(req: AnalyzeRequest):
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── PREVIEW (upcoming matches) ──────────────────────────────
+@app.post("/preview")
+def preview_match(req: PreviewRequest):
+    """Generate a pre-match narrative briefing from team names only.
+    No Docling, no match data — pure LLM from football knowledge."""
+    try:
+        import json
+        from prompts import preview_match as build_preview_prompt
+        from groq_client import _call, _call_preview, MODEL
+        from prompts import SYSTEM_PROMPT
+
+        cache_key = f"preview:{req.home}:{req.away}:{req.language}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            # Invalidate stale cached results with empty team fields
+            th = (cached.get("team_home") or {})
+            ta = (cached.get("team_away") or {})
+            if th.get("style") or th.get("danger") or ta.get("style") or ta.get("danger"):
+                return cached
+            # Empty fields — delete stale cache entry and re-fetch
+            logging.warning(f"[PREVIEW STALE CACHE] invalidating {cache_key}")
+            with cache._lock:
+                cache._cache.pop(cache_key, None)
+
+        prompt = build_preview_prompt(req.home, req.away, req.stage, req.date, req.language)
+
+        raw = _call_preview(SYSTEM_PROMPT, prompt)
+
+
+        # Robust JSON extraction — handle all fence variants
+        cleaned = raw.strip()
+        # Remove any ``` fences (```json, ```JSON, ``` alone)
+        if "```" in cleaned:
+            parts = cleaned.split("```")
+            # parts[1] is the content inside the first fence pair
+            if len(parts) >= 3:
+                cleaned = parts[1]
+            elif len(parts) == 2:
+                cleaned = parts[1]
+            # Strip language identifier on first line (json, JSON, etc.)
+            lines = cleaned.splitlines()
+            if lines and lines[0].strip().lower() in ("json", ""):
+                cleaned = "\n".join(lines[1:])
+            cleaned = cleaned.strip()
+
+        # Last resort: find the outermost { } if still not valid
+        try:
+            result = json.loads(cleaned)
+        except Exception:
+            # Try extracting first { ... } block from raw
+            start = raw.find("{")
+            end   = raw.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    result = json.loads(raw[start:end+1])
+                except Exception:
+                    logging.error(f"[PREVIEW PARSE FAIL] raw={raw[:500]}")
+                    return {"error": True, "headline": "Preview generation failed. Try again."}
+            else:
+                logging.error(f"[PREVIEW NO JSON] raw={raw[:500]}")
+                return {"error": True, "headline": "Preview generation failed. Try again."}
+
+        # Validate key fields non-empty before caching; retry once if blank
+        def _is_valid(r):
+            th = r.get("team_home") or {}
+            ta = r.get("team_away") or {}
+            return bool(th.get("style") or th.get("danger")) and bool(ta.get("style") or ta.get("danger"))
+
+        if not _is_valid(result):
+            logging.warning(f"[PREVIEW EMPTY FIELDS] retrying {req.home} vs {req.away}")
+            raw2 = _call_preview(SYSTEM_PROMPT, prompt)
+            c2 = raw2.strip()
+            if "```" in c2:
+                p2 = c2.split("```")
+                c2 = p2[1] if len(p2) >= 2 else c2
+                l2 = c2.splitlines()
+                if l2 and l2[0].strip().lower() in ("json", ""):
+                    c2 = "\n".join(l2[1:])
+                c2 = c2.strip()
+            try:
+                r2 = json.loads(c2)
+            except Exception:
+                s2, e2 = raw2.find("{"), raw2.rfind("}")
+                r2 = json.loads(raw2[s2:e2+1]) if s2 != -1 and e2 > s2 else result
+            if _is_valid(r2):
+                result = r2
+
+        cache.set(cache_key, result)
+        return result
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -143,6 +143,24 @@ body {
   opacity: 0.7;
 }
 
+.btn-preview {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--yellow);
+  border: 1px solid var(--border-y);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.btn-preview:hover { background: var(--yellow-ghost); border-color: var(--yellow); }
+
 .btn-full { width: 100%; padding: 10px; cursor: not-allowed; }
 
 .btn-back {
@@ -421,9 +439,26 @@ body {
 
 /* Narrative card: fixed height with scroll */
 .answer-card-body-scroll {
-  max-height: 320px;
+  max-height: 360px;
   overflow-y: auto;
 }
+
+.answer-card-narrative { position: relative; }
+
+/* Fade hue at bottom of scrollable narrative — same pattern as preview's content frame */
+.answer-fade-hue {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40px;
+  background: linear-gradient(to top, var(--bg-card) 0%, transparent 100%);
+  pointer-events: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  transition: opacity 0.25s;
+  z-index: 2;
+}
+.answer-card-narrative.at-end .answer-fade-hue { opacity: 0; }
 
 /* Right panel: fixed sensible width, not stretching */
 .result-body {
@@ -1205,6 +1240,23 @@ body {
 
 .btn-featured-insight:hover { background: var(--blue-dark); transform: translateY(-1px); }
 
+.btn-featured-preview {
+  width: 100%;
+  background: transparent;
+  color: var(--yellow);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-y);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.btn-featured-preview:hover { background: var(--yellow-ghost); border-color: var(--yellow); transform: translateY(-1px); }
+
 /* ── Today section ── */
 .today-section {
   margin-top: 14px;
@@ -1948,6 +2000,13 @@ body {
   text-align: center;
 }
 
+.pv-vs-str {
+  font-size: 18px;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
 /* Bottom row: badge + back button */
 .result-header-right {
   display: flex;
@@ -1978,7 +2037,7 @@ body {
 .answer-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -1987,16 +2046,22 @@ body {
 }
 
 .answer-card-head {
-  padding: 8px 16px;
+  padding: 6px 12px;
   background: var(--yellow-ghost);
   border-bottom: 1px solid var(--border);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--yellow);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1.4;
 }
+
+.answer-card-head svg { width: 11px; height: 11px; flex-shrink: 0; }
 
 /* TL;DR card — yellow left border */
 .answer-card:first-child {
@@ -2004,10 +2069,10 @@ body {
 }
 
 .answer-card-body {
-  padding: 22px 20px;
-  font-size: 14px;
-  line-height: 1.85;
-  color: rgba(255,255,255,0.88);
+  padding: 16px 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255,255,255,0.85);
 }
 
 /* Player highlight */
@@ -2057,16 +2122,27 @@ body {
   color: var(--muted);
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
-/* Entity card */
+.result-right-label svg { width: 11px; height: 11px; flex-shrink: 0; color: var(--yellow); }
+
+/* Entity card — big photo on top, info below (classic style) */
 .entity-card {
-  background: var(--bg-card-alt);
+  background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   overflow: hidden;
+  transition: border-color 0.15s;
   animation: card-in 0.25s ease;
 }
+.entity-card:hover { border-color: var(--border-y); }
 
 @keyframes card-in {
   from { opacity: 0; transform: translateY(6px); }
@@ -2085,46 +2161,50 @@ body {
 
 .entity-photo-wrap {
   width: 100%;
+  aspect-ratio: 1 / 1.2;
+  border-radius: 0;
   background: var(--bg-card-alt);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
-/* Portrait: natural aspect ratio, no crop */
 .entity-photo-img {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
-  object-fit: contain;
-  object-position: center top;
-  max-height: 240px;
+  object-fit: cover;
+  object-position: top center;
 }
 
 .entity-photo-placeholder {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
   background: var(--blue-deeper);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 20px;
+  font-size: 32px;
   font-weight: 700;
   color: var(--yellow);
 }
 
-.entity-info { padding: 13px; display: flex; flex-direction: column; gap: 9px; }
+.entity-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1; padding: 14px 15px; }
 
 .entity-name-row { display: flex; align-items: center; gap: 6px; }
 
 .entity-name {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 700;
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .entity-name a { color: var(--white); text-decoration: none; transition: color 0.15s; }
@@ -2134,10 +2214,10 @@ body {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  border-radius: 4px;
-  padding: 2px 7px;
+  border-radius: 3px;
+  padding: 3px 7px;
   align-self: flex-start;
 }
 
@@ -2148,9 +2228,9 @@ body {
 }
 
 .manager-badge {
-  background: var(--yellow-ghost);
-  color: var(--yellow);
-  border: 1px solid var(--border-y);
+  background: rgba(96,165,250,0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(96,165,250,0.3);
 }
 
 /* Awards / Honours pills */
@@ -2189,21 +2269,38 @@ body {
   border-color: var(--border-y);
 }
 
-.entity-stats { display: flex; flex-direction: column; gap: 4px; }
+.entity-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
 
 .entity-stat {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  font-size: 11px;
-  padding: 4px 0;
+  align-items: flex-start;
+  font-size: 13px;
+  padding: 10px 8px;
+  gap: 10px;
   border-bottom: 1px solid var(--border);
-  gap: 8px;
 }
 
 .entity-stat:last-child { border-bottom: none; }
-.entity-stat .es-label { color: var(--muted); flex-shrink: 0; }
-.entity-stat .es-val   { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: var(--white); text-align: right; }
+
+.entity-stat .es-label { color: var(--muted); flex-shrink: 0; padding-top: 1px; }
+.entity-stat .es-val   {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--white);
+  text-align: right;
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
 
 .entity-extract {
   font-size: 10px;
@@ -2845,8 +2942,7 @@ body {
   background: var(--yellow-ghost);
 }
 .cal-match-upcoming {
-  opacity: 0.6;
-  cursor: default;
+  cursor: pointer;
 }
 
 .cal-match-stage {
@@ -2912,6 +3008,26 @@ body {
 }
 .cal-status-done     { color: #4ade80; background: rgba(74,222,128,0.08); }
 .cal-status-upcoming { color: var(--muted); background: rgba(255,255,255,0.04); }
+
+.cal-match-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-status-preview {
+  color: var(--yellow);
+  background: rgba(245,230,66,0.08);
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: normal;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cal-status-preview:hover { background: var(--yellow-ghost); }
 
 /* ── Stage label in search results ── */
 .s-stage-label {

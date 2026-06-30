@@ -4,9 +4,25 @@
 
 import { LANGUAGES, getCurrentLang, setCurrentLang, t } from './config.js';
 
+// Inject disabled nav link styles once
+(function injectNavStyles() {
+  if (document.getElementById('r-nav-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'r-nav-styles';
+  s.textContent = `
+    .nav-link-disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
 const NAV_ITEMS = [
   { id: 'home',     labelKey: 'nav_home',     stage: 'hero' },
   { id: 'analysis', labelKey: 'nav_analysis', stage: 'insight' },
+  { id: 'preview',  labelKey: 'nav_preview',  stage: 'preview' },
   { id: 'tech',     labelKey: 'nav_tech',     stage: 'tech' },
 ];
 
@@ -22,16 +38,27 @@ function getLogoSrc() {
   return LOGO_MAP[getCurrentLang()] ?? DEFAULT_LOGO;
 }
 
-export function buildNav(activeStage, onNavigate) {
+export function buildNav(activeStage, onNavigate, navState = {}) {
+  // navState: { hasAnalysis: bool, hasPreview: bool }
+  const hasAnalysis = !!navState.hasAnalysis;
+  const hasPreview  = !!navState.hasPreview;
+
   return `
     <nav class="r-nav">
       <a class="logo-wrap" href="#" data-nav="hero" aria-label="ROOSTER Home">
         <img src="${getLogoSrc()}" alt="ROOSTER" class="logo-img" id="rooster-logo">
       </a>
       <div class="nav-links">
-        ${NAV_ITEMS.map(n =>
-          `<a href="#" class="nav-link${n.stage === activeStage ? ' active' : ''}" data-nav="${n.stage}">${t(n.labelKey)}</a>`
-        ).join('')}
+        ${NAV_ITEMS.map(n => {
+          let disabled = false;
+          if (n.stage === 'insight'  && !hasAnalysis) disabled = true;
+          if (n.stage === 'preview'  && !hasPreview)  disabled = true;
+          return `<a href="#"
+            class="nav-link${n.stage === activeStage ? ' active' : ''}${disabled ? ' nav-link-disabled' : ''}"
+            data-nav="${n.stage}"
+            ${disabled ? 'aria-disabled="true" tabindex="-1"' : ''}
+            >${t(n.labelKey)}</a>`;
+        }).join('')}
       </div>
       <div class="lang-drop" id="lang-drop" aria-label="Language">
         <button class="lang-drop-btn" id="lang-drop-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -39,9 +66,6 @@ export function buildNav(activeStage, onNavigate) {
             <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
           </svg>
           <span class="lang-drop-label" id="lang-drop-label">${LANGUAGES.find(l => l.code === getCurrentLang())?.label ?? 'English'}</span>
-          <svg class="lang-drop-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
         </button>
         <ul class="lang-drop-menu" id="lang-drop-menu" role="listbox">
           ${LANGUAGES.map(l =>
@@ -85,7 +109,13 @@ export function attachNavListeners(container, onNavigate) {
   container.querySelectorAll('[data-nav]').forEach(el => {
     el.addEventListener('click', e => {
       e.preventDefault();
-      onNavigate(el.dataset.nav);
+      // Skip disabled nav links (analysis/preview not yet unlocked)
+      if (el.classList.contains('nav-link-disabled')) return;
+      const target = el.dataset.nav;
+      // Enforce correct stage for analysis/preview nav items
+      if (target === 'insight') { onNavigate('insight'); return; }
+      if (target === 'preview') { onNavigate('preview-result'); return; }
+      onNavigate(target);
     });
   });
 
@@ -127,24 +157,39 @@ export function attachNavListeners(container, onNavigate) {
 }
 // ── Persistent nav helpers ────────────────────────────────────
 
-export function mountNav(onNavigate) {
+export function mountNav(onNavigate, navState = {}) {
   const shell = document.getElementById('nav-shell');
   if (!shell) return;
-  shell.innerHTML = buildNav('hero', onNavigate);
+  // Store latest navState on the shell so lang-change rebuilds use it
+  shell._navState = navState;
+  shell.innerHTML = buildNav('hero', onNavigate, navState);
   attachNavListeners(shell, onNavigate);
 
   // Rebuild nav labels when language changes
   if (!mountNav._langHandler) {
     mountNav._langHandler = () => {
       const active = document.querySelector('.nav-link.active')?.dataset.nav ?? 'hero';
-      shell.innerHTML = buildNav(active, onNavigate);
+      shell.innerHTML = buildNav(active, onNavigate, shell._navState || {});
       attachNavListeners(shell, onNavigate);
     };
     document.addEventListener('rooster:lang-change', mountNav._langHandler);
   }
 }
 
-export function updateNavActive(stage) {
+export function updateNavActive(stage, navState = {}) {
+  const shell = document.getElementById('nav-shell');
+  if (shell) {
+    // Merge new navState into shell's stored state
+    shell._navState = { ...(shell._navState || {}), ...navState };
+  }
+  // Re-render nav fully so disabled states update correctly
+  const onNavigate = shell?._onNavigate;
+  if (shell && onNavigate) {
+    shell.innerHTML = buildNav(stage, onNavigate, shell._navState || {});
+    attachNavListeners(shell, onNavigate);
+    return;
+  }
+  // Fallback: just toggle active class (no state update possible)
   document.querySelectorAll('.nav-link[data-nav]').forEach(el => {
     el.classList.toggle('active', el.dataset.nav === stage);
   });
