@@ -2,6 +2,16 @@
 
 > Pick any FIFA World Cup 2026 match, ask why a team won or lost, and get a sharp ESPN-anchor-style breakdown — in 10 languages, with every player name backed by a real Wikipedia profile.
 
+- **Problem:** World Cup recaps are static, English-first, and dead-ended.
+- **Approach:** Two-tier LLM (Groq Llama 3.3 70B + 3.1 8B), Wikipedia-grounded reports via Docling, validated player linking, 10-language generation with Latin-script name anchoring.
+- **Why it matters:** 2026 is the biggest, most linguistically diverse World Cup ever — this is built for that audience, not retrofitted onto it.
+
+---
+
+## The Problem
+
+World Cup 2026 will be the most-watched, most linguistically diverse tournament in history — 48 teams, hosts spread across three countries, and a global audience that mostly doesn't read English-first football media. Post-match coverage hasn't caught up: most recaps are a scoreline and a generic wire paragraph, written once, in English, with no way to ask a follow-up. A fan who wants to know *why* a result happened — not just *what* happened — has nowhere to go, especially if they don't read English.
+
 ---
 
 ## What it does
@@ -33,6 +43,8 @@ Rooster turns post-match coverage into something you can actually interrogate. M
 
 ## How it's built
 
+Every decision below maps to one of two goals: keep the analysis grounded in real facts instead of generated filler, and make that analysis genuinely accessible outside English.
+
 **Data layer**
 - `org_client.py` talks to football-data.org for live fixtures, scores, stages, and coach data.
 - `docling_client.py` uses Docling to fetch and parse the relevant Wikipedia match article into clean, match-relevant text. If nothing relevant turns up, a 3-query fallback search kicks in, and if that still comes up empty the pipeline degrades gracefully instead of failing outright.
@@ -54,10 +66,11 @@ Rooster turns post-match coverage into something you can actually interrogate. M
 
 ## Why this matters for the World Cup
 
-Most football analysis tooling is built English-first and stats-first, but the World Cup is the one event on Earth that genuinely isn't. Two things matter here:
+Most football analysis tooling is built English-first and stats-first, but the World Cup is the one event on Earth that genuinely isn't. Three things matter here:
 
-1. **Language shouldn't be the barrier to understanding the game.** A fan in Seoul or Riyadh deserves the same sharp, confident breakdown as a fan in London — not a flattened machine translation, but analysis that reads naturally in their language while staying factually grounded.
-2. **Insight should be a conversation, not a wall of text.** Letting fans ask their own follow-up questions turns a static recap into something closer to how people actually talk about football with each other.
+1. **2026 is the worst possible tournament to serve with English-only, static recaps.** It's the first 48-team World Cup, the first hosted across three countries, and by most projections will draw the largest non-English-speaking viewership of any World Cup yet.
+2. **Language shouldn't be the barrier to understanding the game.** A fan in Seoul or Riyadh deserves the same sharp, confident breakdown as a fan in London — not a flattened machine translation, but analysis that reads naturally in their language while staying factually grounded.
+3. **Insight should be a conversation, not a wall of text.** Letting fans ask their own follow-up questions turns a static recap into something closer to how people actually talk about football with each other.
 
 ---
 
@@ -110,4 +123,4 @@ The frontend expects the backend at `http://localhost:8000` — check `config.js
 
 ---
 
-*Built for the IBM SkillsBuild AI Builders Challenge — June: AI Inside the Match*
+*Built for the IBM SkillsBuild AI Builders Challenge — June '26: AI Inside the Match*
