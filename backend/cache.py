@@ -12,8 +12,8 @@ TTL = {
     "upcoming":     3600,
     "preview":      3600,
     "wiki":         10800,
-    "analysis":     21600,   # 6hrs — analysis of a finished match won't change
-    "names":        21600,   # 6hrs — same text = same names
+    "analysis":     21600,   
+    "names":        21600,   
     "calendar":     86400,
 }
 

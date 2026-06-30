@@ -65,6 +65,16 @@ class AnalyzeRequest(BaseModel):
     loser:      str | None = None
     is_draw:    bool       = False
     stage:      str        = ""
+    # Optional pass-through of the raw data org_client._fmt_match() already
+    # computes (raw_stage, group) and already fetches (goals — including
+    # its own wiki_goals fallback for FINISHED matches). If the frontend
+    # forwards these from the match object it already has (e.g. from
+    # /hero), analyzer.py uses them directly instead of re-deriving
+    # raw_stage by reverse-parsing the humanized `stage` string and
+    # re-fetching goals from Wikipedia a second time.
+    raw_stage:  str | None = None
+    group:      str | None = None
+    goals:      list[dict] | None = None
     question_type: str
     custom_question: str | None = None
     language:      str = "English"
@@ -194,6 +204,9 @@ def analyze_match(req: AnalyzeRequest):
             "loser":      req.loser,
             "is_draw":    req.is_draw,
             "stage":      req.stage,
+            "raw_stage":  req.raw_stage,
+            "group":      req.group,
+            "goals":      req.goals or [],
         }
         result = analyze(match, req.question_type, req.language, req.custom_question)
 

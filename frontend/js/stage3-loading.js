@@ -245,6 +245,15 @@ async function callAnalyze(match, qtype, customQuestion) {
       loser:           match.loser,
       is_draw:         match.is_draw || false,
       stage:           match.stage || '',
+      // Pass through what org_client._fmt_match() already computed for this
+      // match (raw_stage, group, goals — including its wiki_goals fallback)
+      // instead of letting the backend re-derive raw_stage by reverse-
+      // parsing `stage` and re-fetch goals from Wikipedia a second time.
+      // match here is the full /hero response object (stage1-hero.js stores
+      // it as-is into pinnedMatch), so these are already present.
+      raw_stage:       match.raw_stage,
+      group:           match.group,
+      goals:           match.goals,
       question_type:   qtype,
       custom_question: customQuestion || null,
       language:        getApiLang(),

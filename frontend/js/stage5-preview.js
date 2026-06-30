@@ -827,8 +827,6 @@ function nameColor(name) {
 async function loadWatchList(container, result, match) {
   const listEl   = container.querySelector('#pv-entity-list');
   const wrapEl   = container.querySelector('#pv-scroll-wrap');
-  const tabPlayers  = container.querySelector('#pv-tab-players');
-  const tabManagers = null;
   if (!listEl) return;
 
   // ── Body lock (only left panel scrolls) ──
@@ -853,9 +851,6 @@ async function loadWatchList(container, result, match) {
     return;
   }
 
-  // Separate players vs managers
-  const players  = allEntities.filter(p => !p.role || !/manager|coach/i.test(p.role));
-
   // Build and render card HTML (shared)
   const renderList = async (list, idPrefix) => {
     listEl.innerHTML = list.map((_, i) => `
@@ -872,38 +867,66 @@ async function loadWatchList(container, result, match) {
     setTimeout(() => wrapEl?.classList.toggle('at-end', listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 8), 100);
   };
 
-  let activeTab = 'players';
-
-  const switchTab = (tab) => {
-    activeTab = tab;
-    if (tab === 'players') {
-      tabPlayers?.classList.add('active-players');
-      tabManagers?.classList.remove('active-managers');
-      renderList(players, 'pv-pl');
-    } else {
-      tabManagers?.classList.add('active-managers');
-      tabPlayers?.classList.remove('active-players');
-      renderList(managers.length ? managers : allEntities.filter(p => p.role && /manager|coach/i.test(p.role)), 'pv-mg');
-    }
-  };
-
-  tabPlayers?.addEventListener('click',  () => switchTab('players'));
-  tabManagers?.addEventListener('click', () => switchTab('managers'));
-
-  // Default: show players — defer so DOM is fully painted
-  setTimeout(() => renderList(players.length ? players : allEntities, 'pv-pl'), 0);
+  // No more Players/Managers tab split — the tab UI was removed, and the old
+  // English-only "manager|coach" regex filter that used to separate them
+  // silently dropped managers from the list in any language where the
+  // translated role text didn't contain those exact English words. Just
+  // render everyone the model returned, in the order given.
+  setTimeout(() => renderList(allEntities, 'pv-pl'), 0);
 }
 
 async function fillCard(cardEl, p, match) {
   const wikiData = await fetchWikiData(p.name);
   const initials = p.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const color    = nameColor(p.name);
-  const isManager = p.role && /manager|coach/i.test(p.role);
+  const isManager = typeof p.is_manager === 'boolean'
+    ? p.is_manager
+    : (p.role && /manager|coach/i.test(p.role));
   // p.team is now the literal team name (e.g. "Norway"), not an abstract 'home'/'away' label —
   // match it case-insensitively against the real match teams, with a safe fallback to whichever
   // side it most resembles so a stray casing/whitespace difference from the model never breaks display.
   const normalize = s => (s || '').trim().toLowerCase();
   const teamLabel = normalize(p.team) === normalize(match.away) ? match.away : match.home;
+
+  // Managers are the riskiest entries in this list: preview generation runs purely
+  // from the model's training knowledge with no live data behind it, and managerial
+  // appointments change often enough that the model can confidently name someone
+  // who has since moved to a completely different national team (e.g. naming a
+  // manager who left after the last World Cup cycle). Cross-check against
+  // Wikipedia's own bio via the same /extract-entity endpoint stage4-result.js
+  // already uses for the analysis-page player cards. If Wikipedia's
+  // currently_manages names a team that's neither side in THIS match, the model
+  // got it wrong — drop the card rather than show a manager who isn't actually
+  // involved in this fixture. Fails open (keeps the card) on any lookup error,
+  // so a flaky network call never silently empties the watch list.
+  if (isManager && wikiData?.extract) {
+    try {
+      const res = await fetch(`${API_BASE}/extract-entity`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ name: p.name, extract: wikiData.extract }),
+      });
+      if (res.ok) {
+        const info = await res.json();
+        const raw  = info?.currently_manages;
+        const curRole = raw && !/^(empty|unknown|n\/a|none|null|undefined|-)$/i.test(String(raw).trim())
+          ? String(raw).trim()
+          : null;
+        if (curRole) {
+          const normCur  = normalize(curRole);
+          const normHome = normalize(match.home);
+          const normAway = normalize(match.away);
+          const matchesHome = normCur === normHome || normCur.includes(normHome) || normHome.includes(normCur);
+          const matchesAway = normCur === normAway || normCur.includes(normAway) || normAway.includes(normCur);
+          if (!matchesHome && !matchesAway) {
+            cardEl.remove();
+            return;
+          }
+        }
+      }
+    } catch { /* lookup failed — fail open, show the card as generated */ }
+  }
+
   const wikiUrl  = wikiData?.url || `https://en.wikipedia.org/wiki/${encodeURIComponent(p.name.replace(/ /g, '_'))}`;
 
   const photoHtml = wikiData?.thumbnail

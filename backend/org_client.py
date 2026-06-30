@@ -162,8 +162,17 @@ def _get(endpoint: str, params: dict = {}) -> dict:
     res.raise_for_status()
     return res.json()
 
-def _fmt_match(m: dict) -> dict:
-    """Normalize a match object from org API"""
+def _fmt_match(m: dict, include_goals: bool = True) -> dict:
+    """Normalize a match object from org API.
+
+    include_goals=False skips the goals lookup entirely (both the API tier 1
+    field and the wiki_goals tier 2 fallback). Use this for callers that list
+    many matches at once but never display goal detail — e.g. get_calendar(),
+    which only renders date/score dots and would otherwise trigger a
+    wiki_goals Wikipedia lookup per FINISHED match for the WHOLE tournament
+    in a single request. That cost is pure waste for that view and was
+    likely the cause of /calendar timing out / 500ing as more matches
+    finished over the course of the tournament."""
     home = m["homeTeam"]["name"]
     away = m["awayTeam"]["name"]
 
@@ -198,6 +207,56 @@ def _fmt_match(m: dict) -> dict:
     home_coach_name = home_coach.get("name") or ""
     away_coach_name = away_coach.get("name") or ""
 
+    # Goal events — present in v4 API under top-level "goals" for finished
+    # matches (each: minute, team.name, scorer.name, assist.name, type).
+    # This is structured ground truth straight from the data provider —
+    # far more reliable than scraping Wikipedia for "what happened", and
+    # it's what lets the LLM know the real scorers/minutes even when no
+    # Wikipedia match report exists yet (very common right after a match
+    # just finished). Never crashes — falls back to an empty list.
+    #
+    # Skipped entirely when include_goals=False (see _fmt_match docstring) —
+    # callers that need this (analysis) request it explicitly; bulk listing
+    # views (the calendar) don't pay the per-match Wikipedia cost for data
+    # they never display.
+    goals = []
+    if include_goals:
+        for g in m.get("goals") or []:
+            try:
+                scorer_name = (g.get("scorer") or {}).get("name") or "Unknown"
+                assist_obj  = g.get("assist") or {}
+                assist_name = assist_obj.get("name") or ""
+                team_name   = (g.get("team") or {}).get("name") or ""
+                goals.append({
+                    "minute":  g.get("minute"),
+                    "team":    team_name,
+                    "scorer":  scorer_name,
+                    "assist":  assist_name,
+                    "type":    g.get("type") or "",  # e.g. REGULAR, PENALTY, OWN
+                })
+            except Exception:
+                continue
+        # Keep goals in chronological order regardless of API ordering
+        goals.sort(key=lambda g: (g["minute"] if isinstance(g["minute"], int) else 9999))
+
+        # Tier 2 fallback — football-data.org's free tier currently returns
+        # goals: null for this competition, so tier 1 above is always empty in
+        # practice. api-football was evaluated and rejected (free plan blocks
+        # any date outside a rolling ~3-day window, confirmed via direct API
+        # error — not viable since this app needs goals hours/days after a
+        # match ends). Using wiki_goals instead: parses Wikipedia's structured
+        # footballbox infobox table (real <td> column boundaries for home vs
+        # away scorers), not docling's flattened markdown.
+        if not goals and m.get("status") == "FINISHED":
+            try:
+                import wiki_goals
+                goals = wiki_goals.get_goals(
+                    home, away, m["utcDate"][:10],
+                    stage=raw_stage, group=raw_group
+                )
+            except Exception:
+                pass
+
     return {
         "id":             m["id"],
         "home":           home,
@@ -211,12 +270,14 @@ def _fmt_match(m: dict) -> dict:
         "date":           m["utcDate"][:10],
         "time":           m["utcDate"][11:16],
         "stage":          stage_label,
+        "raw_stage":      raw_stage,
         "group":          raw_group,
         "winner":         winner,
         "loser":          loser,
         "is_draw":        is_draw,
         "home_coach":     home_coach_name,
         "away_coach":     away_coach_name,
+        "goals":          goals,
     }
 
 
@@ -345,6 +406,11 @@ def get_calendar() -> list:
     if cached is not None:
         return cached
     data = _get(f"/competitions/{WC_CODE}/matches")
-    matches = [_fmt_match(m) for m in data.get("matches", [])]
+    # include_goals=False: this lists the WHOLE tournament in one request —
+    # paying a wiki_goals Wikipedia lookup per FINISHED match here (data the
+    # calendar grid never displays, it only needs date/score for the dots)
+    # made this endpoint progressively slower/more failure-prone as more
+    # matches finished over the tournament.
+    matches = [_fmt_match(m, include_goals=False) for m in data.get("matches", [])]
     cache.set("calendar", matches)
     return matches

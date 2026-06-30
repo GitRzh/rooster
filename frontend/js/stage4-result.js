@@ -485,6 +485,15 @@ function attachQAChat(container, match, state) {
           loser:           match.loser,
           is_draw:         match.is_draw || false,
           stage:           match.stage || '',
+          // Pass through what org_client._fmt_match() already computed for
+          // this match (raw_stage, group, goals — including its wiki_goals
+          // fallback) instead of letting the backend re-derive raw_stage by
+          // reverse-parsing `stage` and re-fetch goals from Wikipedia a
+          // second time. Falls back to undefined (backend handles that)
+          // if this match object came from a path that doesn't carry them.
+          raw_stage:       match.raw_stage,
+          group:           match.group,
+          goals:           match.goals,
           question_type:   'custom',
           custom_question: q,
           language:        lang,

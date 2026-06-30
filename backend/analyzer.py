@@ -10,8 +10,38 @@ from datetime import datetime, timezone, timedelta
 from prompts import SYSTEM_PROMPT, QUESTION_MAP, DRAW_ALLOWED, RTL_LANGUAGES, custom_question_prompt
 from groq_client import complete, translate, extract_names, is_football_question, NON_LATIN_LANGS
 from docling_client import get_match_context
-from org_client import get_coaches
+from wiki_goals import get_goals
+from org_client import get_coaches, STAGE_LABELS
 import cache
+
+_RAW_STAGE_BY_LABEL = {label: code for code, label in STAGE_LABELS.items()}
+
+
+def _stage_and_group_for_goals(match: dict) -> tuple[str | None, str | None]:
+    """wiki_goals.get_goals() needs the RAW football-data.org stage/group
+    codes (e.g. "GROUP_STAGE" / "GROUP_J") to build its overview-page title
+    guess. main.py's AnalyzeRequest currently only carries the HUMANIZED
+    display string that org_client._fmt_match() produces (e.g. "Group Stage
+    · Group J", "Round of 32", "Final") — the raw codes themselves aren't
+    plumbed through main.py's request model.
+
+    Prefers match["raw_stage"]/match["group"] if main.py's AnalyzeRequest
+    forwarded them from the real match object org_client._fmt_match()
+    produced (these are now optional pass-through fields — see main.py).
+    Falls back to reversing org_client's own STAGE_LABELS mapping when
+    those weren't sent, so it's exact for every stage org_client can
+    produce — not a guess — and additionally pulls the group letter out of
+    the "Group Stage · Group X" compound label for the group-stage case."""
+    if match.get("raw_stage"):
+        return match["raw_stage"], match.get("group")
+
+    stage_display = (match.get("stage") or "")
+
+    if stage_display.startswith("Group Stage"):
+        m = re.search(r"group\s+([A-Za-z])\s*$", stage_display, re.IGNORECASE)
+        return "GROUP_STAGE", (f"GROUP_{m.group(1).upper()}" if m else None)
+
+    return _RAW_STAGE_BY_LABEL.get(stage_display), None
 
 # Minimum hours after match end before Wikipedia is reliable enough
 WIKI_MIN_DELAY_HOURS = 1
@@ -61,6 +91,27 @@ def _translated_answer(english_answer: str, language: str, known_names: list[str
     return f"TLDR: {tldr_t}\n\nNARRATIVE: {narr_t}"
 
 
+def _score_in_answer_matches(answer: str, match: dict) -> bool:
+    """Loose sanity check: if the answer states a numeric scoreline that
+    contradicts the real score, flag it. This won't catch every hallucination
+    (most don't restate the score at all, they just get the *story* wrong),
+    but it catches the cheapest, most embarrassing failure mode — the model
+    asserting a different result than what actually happened — for free.
+    Returns True when no contradicting score is found (i.e. safe to use)."""
+    score_home = match.get("score_home")
+    score_away = match.get("score_away")
+    if score_home is None or score_away is None:
+        return True
+    
+    found = re.findall(r"(\d+)\s*[-–]\s*(\d+)", answer)
+    if not found:
+        return True
+    real_pair = {(score_home, score_away), (score_away, score_home)}
+    for a, b in found:
+        if (int(a), int(b)) not in real_pair:
+            return False
+    return True
+
 def _english_answer(match: dict, question_type: str, custom_question: str | None, user_prompt: str) -> str:
     """Get the canonical ENGLISH answer for this question, from cache if present,
     otherwise generate it once and cache it. Every other language is a translation
@@ -69,7 +120,11 @@ def _english_answer(match: dict, question_type: str, custom_question: str | None
 
     Custom questions are keyed by a hash of the question text (lowercased/trimmed)
     so identical questions reuse the same English source across users/languages,
-    same as the standard question types."""
+    same as the standard question types.
+
+    Includes one retry if the generated answer states a scoreline that
+    contradicts the real match result (cheap, deterministic guard against
+    the most visible kind of hallucination)."""
     if question_type == "custom":
         qhash = hashlib.md5((custom_question or "").strip().lower().encode()).hexdigest()[:16]
         english_key = f"analysis_en_src:{match['id']}:custom:{qhash}"
@@ -79,6 +134,10 @@ def _english_answer(match: dict, question_type: str, custom_question: str | None
     english_answer = cache.get(english_key)
     if not isinstance(english_answer, str) or not english_answer.strip():
         english_answer = complete(SYSTEM_PROMPT, user_prompt, "English")
+        if not _score_in_answer_matches(english_answer, match):
+            retry = complete(SYSTEM_PROMPT, user_prompt, "English")
+            if _score_in_answer_matches(retry, match):
+                english_answer = retry
         cache.set(english_key, english_answer)
 
     return english_answer
@@ -180,6 +239,17 @@ def analyze(match: dict, question_type: str, language: str = "English", custom_q
         date=match["date"]
     )
     match["wiki_context"] = wiki_context
+
+
+    if not match.get("goals"):
+        raw_stage, raw_group = _stage_and_group_for_goals(match)
+        match["goals"] = get_goals(
+            home=match["home"],
+            away=match["away"],
+            date=match["date"],
+            stage=raw_stage,
+            group=raw_group,
+        )
 
     # Build prompt
     if question_type == "custom":

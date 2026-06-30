@@ -9,6 +9,9 @@ let heroData         = null;
 let pinnedMatch      = null;
 let searchDebounce   = null;
 let calendarData     = null;   // full tournament match list
+let calendarLoadFailed = false; // true only when the LAST fetch attempt errored —
+                                 // keeps calendarData=[] (a failed load) from being
+                                 // mistaken for "successfully loaded, zero matches"
 let calendarOpen     = false;
 
 const MAX_CARDS = 4; // max visible cards before fade/scroll
@@ -671,22 +674,38 @@ function closeCalendar(container) {
 }
 
 async function fetchCalendarData(container) {
-  if (calendarData) {
+  // Only treat a PRIOR SUCCESSFUL load as cached — a failed load (HTTP error
+  // or network error) must retry next time the calendar opens, not get stuck
+  // showing a permanently-empty grid for the rest of the session.
+  if (calendarData && !calendarLoadFailed) {
     renderCalendarGrid(container);
     return;
   }
   try {
-    const res  = await fetch(`${API_BASE}/calendar`);
+    const res = await fetch(`${API_BASE}/calendar`);
+    // main.py's /calendar returns {"detail": "..."} (no "matches" key) on a
+    // 500 — fetch() does NOT throw for that, it resolves normally. Without
+    // this check, `data.matches || []` silently becomes an empty array that
+    // looks identical to "successfully loaded, zero matches" — which then
+    // gets cached as success above, permanently disabling every date.
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     calendarData = data.matches || [];
-  } catch {
-    // Fallback: build from heroData if calendar endpoint not yet deployed
+    calendarLoadFailed = false;
+  } catch (err) {
+    console.error('Calendar fetch failed, falling back to hero data:', err);
+    // Fallback: build from heroData if calendar endpoint errored/unavailable.
+    // Still marked as failed — heroData only covers a few days around today,
+    // not the full tournament, so we want to keep retrying the real
+    // endpoint on subsequent calendar opens rather than treating this
+    // partial fallback as the permanent answer.
     calendarData = [
       ...((heroData?.yesterday)    || []),
       ...((heroData?.two_days_ago) || []),
       ...((heroData?.today)        || []),
       ...((heroData?.upcoming)     || []),
     ];
+    calendarLoadFailed = true;
   }
   renderCalendarGrid(container);
 }

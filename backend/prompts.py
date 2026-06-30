@@ -28,7 +28,10 @@ Famous retired players (e.g. Burak Yilmaz, Didier Deschamps, Zinedine Zidane, Th
 When no confirmed goalscorer is known from context, describe the team's attack collectively rather than inventing individual scorers.
 
 CRITICAL — ELIGIBILITY:
-Every player or manager you name MUST be a national of one of the two teams actually playing in THIS match — nobody else. Do not name a player just because they are famous or because their name comes to mind easily; naming a star player from a country that isn't even in this match (e.g. naming Haaland in a match that doesn't involve Norway) is a serious factual error, not a stylistic choice. The two eligible national teams are given explicitly in the MATCH line below — before naming anyone, check they plausibly belong to one of those two countries. If you are not confident a name belongs to either eligible squad, do not use it — describe the action collectively instead (e.g. "Brazil's forward line", "the Japanese back four")."""
+Every player or manager you name MUST be a national of one of the two teams actually playing in THIS match — nobody else. Do not name a player just because they are famous or because their name comes to mind easily; naming a star player from a country that isn't even in this match (e.g. naming Haaland in a match that doesn't involve Norway) is a serious factual error, not a stylistic choice. The two eligible national teams are given explicitly in the MATCH line below — before naming anyone, check they plausibly belong to one of those two countries. If you are not confident a name belongs to either eligible squad, do not use it — describe the action collectively instead (e.g. "Brazil's forward line", "the Japanese back four").
+
+OVERRIDE — READ THIS LAST, IT WINS OVER EVERYTHING ABOVE:
+If the match context below contains a block starting with "NO MATCH REPORT AVAILABLE", that block overrides every instruction above about naming specific players in key moments. In that case you do NOT know who scored, missed a chance, lost the ball, or made any specific play — you only know the final score and team names. Do not invent one. Speak about each team collectively (their typical style, strengths, history) instead of fabricating individual moments. This is not optional and is not a style preference — stating a specific unverified action by a named player is a factual error in that case, exactly like naming an ineligible player is a factual error under the rule above."""
 
 
 def build_context(match: dict) -> str:
@@ -70,29 +73,68 @@ def build_context(match: dict) -> str:
             + "\n".join(f"- {p}" for p in manager_parts)
         )
 
-    # Detect the thin/no-report fallback from docling_client.py — when no real
-    # match report was found, the model has nothing to ground individual
-    # scorer/assist names in, and the SYSTEM_PROMPT's "always name specific
-    # players" pressure is exactly what causes it to invent a famous name
-    # that isn't even eligible for either team. Make that explicit instead
-    # of leaving it to infer from a generic-sounding wiki block.
-    no_report = "Detailed match report unavailable" in wiki
+    # Goal-by-goal events — this is structured data straight from the match
+    # provider (football-data.org), NOT scraped text, so it's ground truth.
+    # This is what actually tells the model who scored, when, and how —
+    # the scoreline alone ("3-3") tells it nothing about what happened.
+    # Without this, on a draw especially, the model has no real signal and
+    # falls back to generic stereotypes about either team instead of the
+    # actual match (e.g. inventing a "wasteful, error-prone" narrative for
+    # a side that actually scored three good goals including a near-winner).
+    goals = match.get("goals") or []
+    goals_line = ""
+    if goals:
+        goal_lines = []
+        for g in goals:
+            minute = g.get("minute")
+            minute_str = f"{minute}'" if minute is not None else "?'"
+            scorer = g.get("scorer", "Unknown")
+            team   = g.get("team", "")
+            assist = g.get("assist", "")
+            gtype  = g.get("type", "")
+            extra  = []
+            if assist:
+                extra.append(f"assist: {assist}")
+            if gtype and gtype not in ("REGULAR",):
+                extra.append(gtype.lower().replace("_", " "))
+            extra_str = f" ({', '.join(extra)})" if extra else ""
+            goal_lines.append(f"  {minute_str} {scorer} — {team}{extra_str}")
+        goals_line = (
+            "\n\nCONFIRMED GOALS — chronological, ground truth, do NOT contradict or invent additional goals:\n"
+            + "\n".join(goal_lines)
+        )
+
+    # Trigger purely on whether we have structured goal data — NOT on whether
+    # docling's wiki_context happens to contain a specific placeholder string.
+    # wiki_context can be non-empty (generic team/squad articles) while still
+    # containing zero information about what actually happened in THIS match.
+    # The goals array is the only thing that tells the model who scored, when,
+    # and how — without it, the SYSTEM_PROMPT's "always name specific players,
+    # reason from football knowledge" pressure is exactly what makes the model
+    # invent a plausible-sounding but fabricated moment. This note explicitly
+    # overrides that pressure whenever there's no real play-by-play to ground it.
+    no_report = not goals
     no_report_note = ""
     if no_report:
         no_report_note = (
             "\n\nNO MATCH REPORT AVAILABLE: there is no real play-by-play data for this match — "
-            "you do NOT know who scored, assisted, or made key plays. Do NOT invent a specific "
-            "goalscorer or any specific moment. Reason about the teams collectively instead — their "
-            "typical style, strengths, and history — without naming individuals for events you have "
-            "no factual basis for. If you do mention an individual player by name, it must be purely "
-            "as squad/style context (e.g. 'a team built around X's pace'), never as the scorer or "
-            "actor in a specific moment you're making up."
+            "you do NOT know who scored, assisted, or made key plays, and you do NOT know any "
+            "specific in-game moment (no chances missed, no tackles, no passes, no substitutions). "
+            "This overrides the earlier instruction to 'use what you know' and 'reason from football "
+            "knowledge' — that applies to general team style/history, NEVER to inventing specific "
+            "events in this match. Reason about the teams collectively instead — their typical style, "
+            "strengths, and history — without naming individuals for events you have no factual basis "
+            "for. If you do mention an individual player by name, it must be purely as squad/style "
+            "context (e.g. 'a team built around X's pace'), never as the scorer or actor in a specific "
+            "moment you're making up. The TL;DR and Narrative should center on what the SCORE and stage "
+            "of the match tell you (e.g. a 3-4 round-of-32 game implies an open, high-event match), not "
+            "on a fabricated chronological account."
         )
 
     eligible_line = f"\n\nELIGIBLE PLAYERS/MANAGERS: only nationals of {home} or {away}. No one else may be named."
 
     return f"""MATCH: {home} (HOME) vs {away} (AWAY) | {stage} | {date}
-{result_line}{manager_line}{eligible_line}{no_report_note}
+{result_line}{goals_line}{manager_line}{eligible_line}{no_report_note}
 
 MATCH FACTS:
 {wiki}""".strip()
@@ -190,14 +232,28 @@ def translate_prompt(text: str, language: str, known_names: list[str] | None = N
 CRITICAL — PRESERVE THESE EXACT NAMES: {names_list}
 Every name in that list appears in the source text above and MUST appear in your translation —
 do not drop, paraphrase, or summarize any of them away. Write each one in {language} script,
-immediately followed by its Latin-script spelling in parentheses on first mention, e.g. 메시 (Messi).
+immediately followed by its Latin-script spelling in parentheses on first mention.
 Copy the Latin spelling EXACTLY as given in the list above, character for character — do not
-re-transliterate it yourself. This applies to every name in the list, not just the first one."""
+re-transliterate it yourself. This applies to every name in the list, not just the first one.
+The {language}-script transliteration must use ONLY {language}'s own script — never mix in
+characters from a third script (e.g. no Cyrillic, no accented Latin letters) inside it. If you
+are not fully confident how to transliterate a name into {language} script, skip the
+transliteration for that name and just give its exact Latin spelling from the list above on its
+own — a missing transliteration is fine, a mixed-script one is not."""
+
+    no_other_scripts = (
+        f"\n\nLANGUAGE LOCK: Respond ENTIRELY in {language}. Every word of your output must be in "
+        f"{language} — do not switch into English, Chinese, Korean, Japanese, Cyrillic, or any other "
+        f"language or script at any point, even for a single word, fragment, or character. The ONLY "
+        f"exception is a player/manager name's required Latin-script form in parentheses, as instructed "
+        f"above. If you are unsure how to render a word in {language}, choose the closest natural "
+        f"phrasing in {language} rather than falling back to another language or script."
+    )
 
     return f"""Translate this football analysis into {language}.
 Keep the ESPN anchor energy — confident, sharp, direct.
 For RTL languages (Arabic, Urdu), ensure natural flow in that direction.
-Return ONLY the translated text.{names_note}
+Return ONLY the translated text.{names_note}{no_other_scripts}
 
 TEXT:
 {text}"""

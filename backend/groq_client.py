@@ -23,7 +23,7 @@ MAX_TOKENS         = 800   # raised: 500 was too short for 4-6 sentence narrativ
 # big JSON blob — far more reliable for non-Latin-script languages, which use more tokens per
 # character and used to truncate mid-object on the old single-call/2000-token design.
 PREVIEW_TOKENS_ANALYSIS       = 1100
-PREVIEW_TOKENS_ANALYSIS_WIDE  = 1800   # CJK/Arabic need more tokens per character
+PREVIEW_TOKENS_ANALYSIS_WIDE  = 1800   
 PREVIEW_TOKENS_PLAYERS        = 600
 PREVIEW_TOKENS_PLAYERS_WIDE   = 1000
 
@@ -87,7 +87,14 @@ def complete(system: str, user_prompt: str, language: str = "English") -> str:
                 "Example (Japanese): メッシ (Messi), ハーランド (Haaland). "
                 "Example (Korean): 메시 (Messi), 홀란드 (Haaland). "
                 "Example (Chinese): 梅西 (Messi), 哈兰德 (Haaland). "
-                "Never omit the Latin form on first mention."
+                "Never omit the Latin form on first mention. "
+                "CRITICAL: the native-script transliteration must use ONLY the target "
+                "language's own script — never mix in characters from a third script "
+                "(e.g. no Cyrillic, no accented Latin letters, no stray symbols) inside "
+                "the native-script form. If you are not fully confident how to transliterate "
+                "a name into the native script, skip the native-script attempt for that name "
+                "entirely and just give its Latin-script form on its own — a missing "
+                "transliteration is fine, a mixed-script one is not."
             )
 
     no_hedge = (
@@ -384,6 +391,15 @@ def translate_preview(result: dict, language: str) -> dict:
     players_tokens  = (PREVIEW_TOKENS_PLAYERS_WIDE  if wide else PREVIEW_TOKENS_PLAYERS)  + (500 if wide else 200)
 
     merged = copy.deepcopy(result)
+
+    # Stamp is_manager on each entry from the ORIGINAL English role, before any
+    # translation touches it. Frontend code used to regex-match "manager|coach"
+    # against the (possibly translated) role text directly — that breaks the
+    # moment role gets translated into a language where those English words
+    # don't appear (e.g. Chinese "主教练"), silently mis-tagging the entry as a
+    # player. This flag survives untouched regardless of language.
+    for p in merged.get("players_to_watch") or []:
+        p["is_manager"] = bool(p.get("role")) and bool(re.search(r"manager|coach", p["role"], re.IGNORECASE))
 
     analysis_translated = _translate_preview_block(
         translate_preview_analysis_prompt(result, language), language, analysis_tokens
